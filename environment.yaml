@@ -1,0 +1,41 @@
+name: ID-mRSFC-ISOI
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.13
+
+  # core
+  - numpy
+  - scipy
+  - pandas
+  - matplotlib
+  - scikit-learn
+  - statsmodels
+
+  # graph/network
+  - networkx
+  - igraph
+
+  # imaging
+  - pillow
+  - imageio
+  - tifffile
+
+  # jupyter
+  - jupyter
+  - ipykernel
+
+  - pip
+
+  # pip only packages
+  - pip:
+      - pingouin
+      - pyvis
+      - cdlib
+      - dynetx
+      - hmmlearn
+      - opencv-python
+      - numba

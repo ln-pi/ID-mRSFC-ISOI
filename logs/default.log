@@ -1,0 +1,122 @@
+
+
+=============== RUN START ===============
+Timestamp: 2026-05-28 15:35:13.026309
+Script: 01_preprocess.py
+-----------------------------------------
+
+
+=============== RUN START ===============
+Timestamp: 2026-05-28 15:35:36.593900
+Script: 01_preprocess.py
+-----------------------------------------
+Graph Resolution: 256 x 256.
+Graph Number: 108077, in 1 channels.
+
+
+=============== RUN START ===============
+Timestamp: 2026-05-29 14:28:00.602233
+Script: 01_preprocess.py
+-----------------------------------------
+Graph Resolution: 256 x 256.
+Graph Number: 108077, in 1 channels.
+
+
+=============== RUN START ===============
+Timestamp: 2026-05-29 14:52:09.787703
+Script: 01_preprocess.py
+-----------------------------------------
+
+
+=============== RUN START ===============
+Timestamp: 2026-06-09 15:52:49.173622
+Script: 01_preprocess.py
+-----------------------------------------
+
+
+=============== RUN START ===============
+Timestamp: 2026-06-09 15:54:45.667969
+Script: 01_preprocess.py
+-----------------------------------------
+
+
+=============== RUN START ===============
+Timestamp: 2026-06-09 16:19:00.735732
+Script: 01_preprocess.py
+-----------------------------------------
+Tiff saved: data\processed\WT\Run01\41#\41#_.tif
+
+
+=============== RUN START ===============
+Timestamp: 2026-06-11 13:58:49.229729
+Script: 01_preprocess.py
+-----------------------------------------
+Tiff saved: data\processed\WT\Run01\41#\41#_.tif
+Running in isolated process: 41#_
+[ERROR]2026-06-11 14:25:04 - suite2p:100 - Process failed with return code 1: 41#_
+[ERROR]2026-06-11 14:25:04 - suite2p:101 - Error output: Traceback (most recent call last):
+  File "c:\Users\admin\.vscode\extensions\ms-python.debugpy-2026.6.0-win32-x64\bundled\libs\debugpy\_vendored\pydevd\pydevd.py", line 3740, in <module>
+    main()
+  File "c:\Users\admin\.vscode\extensions\ms-python.debugpy-2026.6.0-win32-x64\bundled\libs\debugpy\_vendored\pydevd\pydevd.py", line 3725, in main
+    globals = debugger.run(setup["file"], None, None, is_module)
+  File "c:\Users\admin\.vscode\extensions\ms-python.debugpy-2026.6.0-win32-x64\bundled\li
+[ERROR]2026-06-11 14:25:04 - logger:20 - No such directory: data\processed\WT\OIS_Corrected\suite2p\plane0\reg_tif
+NoneType: None
+
+
+=============== RUN START ===============
+Timestamp: 2026-06-11 14:32:17.226946
+Script: 01_preprocess.py
+-----------------------------------------
+Tiff saved: data\processed\WT\Run01\41#\41#_.tif
+Running in isolated process: 41#_
+[ERROR]2026-06-11 14:55:08 - suite2p:100 - Process failed with return code 1: 41#_
+[ERROR]2026-06-11 14:55:08 - suite2p:101 - Error output: Traceback (most recent call last):
+  File "c:\Users\admin\.vscode\extensions\ms-python.debugpy-2026.6.0-win32-x64\bundled\libs\debugpy\_vendored\pydevd\pydevd.py", line 3740, in <module>
+    main()
+  File "c:\Users\admin\.vscode\extensions\ms-python.debugpy-2026.6.0-win32-x64\bundled\libs\debugpy\_vendored\pydevd\pydevd.py", line 3725, in main
+    globals = debugger.run(setup["file"], None, None, is_module)
+  File "c:\Users\admin\.vscode\extensions\ms-python.debugpy-2026.6.0-win32-x64\bundled\li
+[ERROR]2026-06-11 14:55:10 - logger:20 - No such directory: data\processed\WT\OIS_Corrected\suite2p\plane0\reg_tif
+NoneType: None
+
+
+=============== RUN START ===============
+Timestamp: 2026-06-11 15:37:17.931645
+Script: 01_preprocess.py
+-----------------------------------------
+Tiff saved: data\processed\WT\Run01\41#\41#_.tif
+Running in isolated process: 41#_
+[ERROR]2026-06-11 16:02:12 - suite2p:100 - Process failed with return code 1: 41#_
+[ERROR]2026-06-11 16:02:12 - suite2p:101 - Error output: Traceback (most recent call last):
+  File "c:\Users\admin\.vscode\extensions\ms-python.debugpy-2026.6.0-win32-x64\bundled\libs\debugpy\_vendored\pydevd\pydevd.py", line 3740, in <module>
+    main()
+  File "c:\Users\admin\.vscode\extensions\ms-python.debugpy-2026.6.0-win32-x64\bundled\libs\debugpy\_vendored\pydevd\pydevd.py", line 3725, in main
+    globals = debugger.run(setup["file"], None, None, is_module)
+  File "c:\Users\admin\.vscode\extensions\ms-python.debugpy-2026.6.0-win32-x64\bundled\li
+
+
+=============== RUN START ===============
+Timestamp: 2026-06-11 16:09:57.349222
+Script: 01_preprocess.py
+-----------------------------------------
+Tiff saved: data\processed\WT\Run01\41#\Trial1\41#_Trial1.tif
+Running in isolated process: 41#_Trial1
+
+
+=============== RUN START ===============
+Timestamp: 2026-06-12 14:44:41.298788
+Script: 01_preprocess.py
+-----------------------------------------
+Tiff saved: data\processed\WT\Run01\41#\Trial1\41#_Trial1.tif
+Running in isolated process: 41#_Trial1
+Process completed successfully: 41#_Trial1
+
+
+=============== RUN START ===============
+Timestamp: 2026-06-12 16:26:41.038407
+Script: 01_preprocess.py
+-----------------------------------------
+Tiff saved: data\processed\WT\Run01\41#\Trial1\41#_Trial1.tif
+Running in isolated process: 41#_Trial1
+Process completed successfully: 41#_Trial1

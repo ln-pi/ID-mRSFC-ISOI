@@ -1,0 +1,44 @@
+# ==================================================
+# Project Configuration
+# ==================================================
+
+# ---------- Info ----------
+paths:
+  raw: "F:\\OIS_Awake_Mice\\"
+  processed: "data\\processed\\"
+  output: "data\\output\\"
+  mask: "data\\mask\\"
+  log: "logs\\default.log"
+
+variables:
+  dataset: "WT"
+  Session_ids: ["Session1", "Session2", "Session3", "Session4"]
+  Mouse_ids: ["A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A09", "A10"]
+  Trial_ids: ["Trial1", "Trial2", "Trial3", "Trial4", "Trial5", "Trial6", "Trial7"]
+  Atlas: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED"], ["None"], ["AUDv"]]
+
+# ---------- Preprocess ----------
+preprocess:
+  keepna: Fasle
+  bin:
+    time: 6
+    space: 4
+  filter:
+    highpass: 0.005
+    lopass: 1
+    fps: 5
+  robust: 2
+
+# ---------- Analysis ----------
+ID:
+  group_mode: 14
+  shuffle: True
+  n_iter: 1000
+
+Edge:
+  seed: 42
+  repeat: 50
+  threshold: 99
+  gap: 0.25
+  cross_only: False
+  save_mat: True
