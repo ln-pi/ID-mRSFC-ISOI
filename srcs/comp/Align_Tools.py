@@ -8,6 +8,7 @@ import copy
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
 
 from tqdm import tqdm
 
@@ -22,6 +23,11 @@ config = load_config(args.config)
 if config is None:
     raise ValueError("Config is empty (None). Exiting.")
 logger = setup_logger(config["paths"]["log"])
+
+
+def tqdm_input(prompt):
+    with tqdm.external_write_mode(file=sys.stderr):
+        return input(prompt)
 
 
 class Match_Pattern(Mask_Generator):
@@ -190,7 +196,9 @@ class Match_Pattern(Mask_Generator):
         plt.show(block=False)
 
         while True:
-            key = input("Press to continue (y/n): ")
+            logger.info("Alignment preview ready. Press y to continue, or n to reselect anchors.")
+            key = tqdm_input("Press to continue (y/n): ").strip().lower()
+            logger.info(f"Alignment confirmation input: {key}")
             if key.lower() == 'y':
                 break
             elif key.lower() == 'n':
@@ -200,6 +208,8 @@ class Match_Pattern(Mask_Generator):
                 logger.info(f"Reselecting anchors (retry {self.retry_cnt})")
                 self.Select_Anchor()
                 return self.Fit_Align_Matrix()
+            else:
+                logger.warning("Invalid input. Please enter y or n.")
     
     def Transform_Series(self, stacks, intra=cv2.INTER_NEAREST):
         graph_num = len(stacks)

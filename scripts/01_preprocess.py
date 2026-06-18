@@ -62,7 +62,7 @@ for session in Session_ids:
             )
 
             # --- Step 3: Merge corrected TIFFs ---
-            input_dir = os.path.join(processed_path, "OIS_Corrected", "suite2p")
+            input_dir = os.path.join(processed_path, "OIS_Corrected", mouse, trial, "suite2p")
             merged_path = os.path.join(processed_folder, f"{mouse}_{trial}_merged.tif")
 
             merged_video = merge_tiffs(input_dir, merged_path)

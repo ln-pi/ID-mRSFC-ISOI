@@ -21,6 +21,38 @@ def parse_args():
     return parser.parse_args()
 
 
+def normalize_data(data, mask=None, axis=-1, eps=1e-8, mask_fill=np.nan):
+    """
+    Z-score normalize data along a given axis.
+
+    For OIS stacks arranged as H x W x T, the default normalizes each pixel's
+    time series. If mask is provided, pixels outside mask are filled with
+    mask_fill, which defaults to NaN.
+    """
+    data = np.asarray(data, dtype=np.float64)
+
+    if mask is None:
+        mean = np.nanmean(data, axis=axis, keepdims=True)
+        std = np.nanstd(data, axis=axis, keepdims=True)
+        normalized = (data - mean) / (std + eps)
+        return np.nan_to_num(normalized, nan=0.0, posinf=0.0, neginf=0.0)
+
+    mask = np.asarray(mask, dtype=bool)
+    if mask.shape != data.shape[:mask.ndim]:
+        logger.raise_(ValueError(
+            f"Mask shape {mask.shape} is incompatible with data shape {data.shape}"
+        ))
+
+    normalized = np.full(data.shape, mask_fill, dtype=np.float64)
+    valid_data = data[mask]
+    mean = np.nanmean(valid_data, axis=axis, keepdims=True)
+    std = np.nanstd(valid_data, axis=axis, keepdims=True)
+    valid_normalized = (valid_data - mean) / (std + eps)
+    normalized[mask] = np.nan_to_num(valid_normalized, nan=0.0, posinf=0.0, neginf=0.0)
+
+    return normalized
+
+
 # ========== Extract ROIs needed ==========
 def should_exclude(name, exclude_list):
     if exclude_list is None:

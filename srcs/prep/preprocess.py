@@ -8,7 +8,7 @@ import tifffile
 from scipy import signal
 
 from srcs.utils.logger import setup_logger
-from srcs.utils.utils import parse_args
+from srcs.utils.utils import normalize_data, parse_args
 from srcs.io.readers import load_config, Info_Reader, Graph_Reader_All
 from srcs.comp.Align_Tools import Match_Pattern
 from srcs.comp.Filters import Filter_2D
@@ -22,6 +22,14 @@ logger = setup_logger(config["paths"]["log"])
 
 
 def Bin2Tiff(folder, info_path, output_tiff="output.tiff", keepna=False):
+    if isinstance(keepna, str):
+        keepna = keepna.strip().lower()
+        if keepna in {"false", "0", "no", "off"}:
+            keepna = False
+        elif keepna in {"true", "1", "yes", "on"}:
+            keepna = True
+        else:
+            logger.raise_(ValueError(f"Invalid keepna value: {keepna!r}"))
 
     # --- Step 1: get all *.bin files ---
     bin_files = glob.glob(os.path.join(folder, "img*.bin"))
@@ -50,6 +58,7 @@ def Bin2Tiff(folder, info_path, output_tiff="output.tiff", keepna=False):
     final_stack = np.stack(stacks, axis=1).squeeze()
     num_frames = final_stack.shape[0]
     final_stack = final_stack.reshape(num_frames, final_stack.shape[1], final_stack.shape[2])
+    final_stack = _sanitize_tiff_stack(final_stack)
 
     # --- Step 5: write multi-page TIFF ---
     tifffile.imwrite(output_tiff, final_stack, photometric="minisblack")
@@ -57,6 +66,30 @@ def Bin2Tiff(folder, info_path, output_tiff="output.tiff", keepna=False):
     logger.info(f"Tiff saved: {output_tiff}")
 
     return final_stack
+
+
+def _sanitize_tiff_stack(stack):
+    stack = np.asarray(stack)
+    if stack.ndim != 3:
+        logger.raise_(ValueError(f"Expected a 3-D TIFF stack, got shape {stack.shape}"))
+
+    if not np.isfinite(stack).all():
+        logger.warning("Non-finite values found before Suite2p; replacing them with finite values.")
+        stack = np.nan_to_num(stack, nan=0, posinf=0, neginf=0)
+
+    frame_sums = stack.reshape(stack.shape[0], -1).sum(axis=1)
+    bad_frames = np.where(frame_sums == 0)[0]
+    if len(bad_frames) > 0:
+        logger.warning(f"Found {len(bad_frames)} zero frames before Suite2p; filling from nearby frames.")
+        good_frames = np.where(frame_sums != 0)[0]
+        if len(good_frames) == 0:
+            logger.raise_(ValueError("All frames are zero; Suite2p cannot build a registration template."))
+        for idx in bad_frames:
+            previous = good_frames[good_frames < idx]
+            fill_idx = previous[-1] if len(previous) else good_frames[0]
+            stack[idx] = stack[fill_idx]
+
+    return stack
 
 
 def merge_tiffs(input_dir, merged_path):
@@ -132,7 +165,7 @@ def drr_narrow(processed_path, session, mouse, trial):
     beta = np.linalg.lstsq(X, Y, rcond=None)[0]
     residuals = Y - X @ beta
     regress_data = residuals.T.reshape(GSR_data.shape)
-    NormalizedSeries = normalize_data(regress_data)
+    NormalizedSeries = normalize_data(regress_data, mask=chambermask)
     ResidualGSR = np.transpose(NormalizedSeries, (2, 0, 1))
 
     #filtering

@@ -19,7 +19,7 @@ variables:
 
 # ---------- Preprocess ----------
 preprocess:
-  keepna: Fasle
+  keepna: False
   bin:
     time: 6
     space: 4

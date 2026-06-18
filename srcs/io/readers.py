@@ -180,8 +180,8 @@ def Graph_Reader_All(img_file_lists, channel_names = ["Red"], log=True, nan=Fals
             all_graphs = np.concatenate((all_graphs, c_frame), axis=0)
     
     if log is True:
-        tqdm.write(f"Graph Resolution: {head_info[1]} x {head_info[2]}.")
-        tqdm.write(f"Graph Number: {all_graphs.shape[0]}, in {channel_num} channels.")
+        logger.info(f"Graph Resolution: {head_info[1]} x {head_info[2]}.")
+        logger.info(f"Graph Number: {all_graphs.shape[0]}, in {channel_num} channels.")
     
     # seperate channel data
     all_channel_data = [[] for _ in range(channel_num)]

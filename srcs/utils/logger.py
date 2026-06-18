@@ -6,6 +6,8 @@ from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from typing import Optional, cast
 
+from tqdm import tqdm
+
 
 class CustomLogger(logging.Logger):
     def raise_(
@@ -48,6 +50,16 @@ class LevelFormatter(logging.Formatter):
         return self.full_formatter.format(record)
 
 
+class TqdmLoggingHandler(logging.Handler):
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            tqdm.write(msg, file=sys.stderr)
+            self.flush()
+        except Exception:
+            self.handleError(record)
+
+
 
 def setup_logger(
         log_file: str = "logs\\default.log",
@@ -61,6 +73,7 @@ def setup_logger(
         return logger
     
     logger.setLevel(level)
+    logger.propagate = False
 
     full_fmt = "[%(levelname)s]%(asctime)s - %(module)s:%(lineno)d - %(message)s"
     smpl_fmt = "%(message)s"
@@ -82,7 +95,7 @@ def setup_logger(
 
     # ----- Console Log -----
     if to_console:
-        console = logging.StreamHandler()
+        console = TqdmLoggingHandler()
         console.setFormatter(formatter)
         logger.addHandler(console)
 

@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 
 from srcs.utils.logger import setup_logger
 from srcs.utils.utils import parse_args
@@ -14,97 +15,126 @@ logger = setup_logger(config["paths"]["log"])
 
 
 def run_isolated_process(tiff_file, mouse, trial, save_path):
-
     script_content = f'''
-import tifffile
 import os
-from suite2p import run_s2p, default_ops
+import numpy as np
+import tifffile
+from suite2p import run_s2p, default_settings
 
-# 读取图像信息
+
 with tifffile.TiffFile(r"{tiff_file}") as tif:
     sample_frame = tif.pages[0].asarray()
+    nframes = len(tif.pages)
 
-# 配置Suite2p参数
-ops = default_ops.default_ops()
-ops.update({{
-    # === 图像参数 ===
-    "Ly": sample_frame.shape[0],      # 图像高度
-    "Lx": sample_frame.shape[1],      # 图像宽度
-    "fs": 30.0,                       # 帧率（Hz），根据实验调整
-    
-    # === 运动矫正核心 ===
-    "do_registration": 1,
-    "two_step_registration": True,
-    "nonrigid": True,
-    "block_size": [64, 64],           # OIS适合的块大小
-    
-    # === 模板构建 ===
-    "nimg_init": 50,                  # 少量帧建立模板（避免血流信号污染）
-    "1Preg": True,                     # 使用更稳健的模板更新
-    
-    # === 配准参数 ===
-    "maxregshift": 0.02,              # 允许更大位移（红光对比度低）
-    "smooth_sigma": 0.5,              # 更高平滑（提高信噪比）
-    "subpixel": 20,                   # 高子像素精度
-    "phasecorr": False,                # 相位相关法对红光更好
-    
-    # === 非刚性矫正 ===
-    "snr_thresh": 1,                # 降低阈值（红光对比度低）
-    
-    # === 输出控制 ===
-    "reg_tif": True,                  # 保存矫正TIFF
-    "keep_movie_raw": False,          # 不保存原始二进制（节省空间）
-    "save_mat": False,                # 不保存.mat文件
-    "save_NWB": False,                # 不保存NWB
-    
-    # === 必须禁用的功能 ===
-    "roidetect": 0,
+if not np.isfinite(sample_frame).all() or sample_frame.sum() == 0:
+    raise ValueError("First frame is non-finite or zero; Suite2p registration would be unstable.")
+
+settings = default_settings()
+settings.update({{
+    "Ly": sample_frame.shape[0],
+    "Lx": sample_frame.shape[1],
+    "fs": 30.0,
     "diameter": 10,
-    "spikedetect": 0,
-    "denoise": 0,
-    "smoothness_time": 0,
-    "norm_frames": False,             # 不标准化帧（会破坏ΔR/R）
+    "torch_device": "cpu",
+}})
+settings["run"].update({{
+    "do_registration": 1,
+    "do_regmetrics": False,
+    "do_detection": False,
+    "do_deconvolution": False,
+    "multiplane_parallel": False,
+}})
+settings["io"].update({{
+    "combined": False,
+    "save_mat": False,
+    "save_NWB": False,
+    "delete_bin": False,
+    "move_bin": False,
+}})
+settings["registration"].update({{
+    "two_step_registration": True,
+    "nonrigid": False,
+    "block_size": [128, 128],
+    "nimg_init": min(500, nframes),
+    "1Preg": True,
+    "maxregshift": 0.1,
+    "maxregshiftNR": 5,
+    "smooth_sigma": 1.15,
+    "subpixel": 10,
+    "phasecorr": True,
+    "snr_thresh": 1.2,
+    "reg_tif": True,
+    "reg_tif_chan2": False,
+    "norm_frames": False,
+}})
+settings["extraction"].update({{
+    "batch_size": 500,
     "neuropil_extract": False,
     "inner_neuropil_radius": 0,
-
-    # === 内存优化 ===
-    "batch_size": 3000,                # 根据内存调整（OIS通常帧数少）
-    "num_workers": 0,
-    "use_gpu": False                # 单线程（避免内存溢出）
 }})
 
-
-# 运行
 db = {{
     "data_path": [os.path.dirname(r"{tiff_file}")],
     "save_path0": r"{os.path.join(save_path, mouse, trial)}",
+    "save_folder": "suite2p",
+    "input_format": "tif",
+    "nplanes": 1,
+    "nchannels": 1,
+    "functional_chan": 1,
+    "keep_movie_raw": False,
 }}
 
-run_s2p(db, ops)
+run_s2p(db, settings)
+
+plane0 = os.path.join(db["save_path0"], db["save_folder"], "plane0")
+reg_tif_dir = os.path.join(plane0, "reg_tif")
+if not os.path.isdir(reg_tif_dir) or not any(name.lower().endswith((".tif", ".tiff")) for name in os.listdir(reg_tif_dir)):
+    db_path = os.path.join(plane0, "db.npy")
+    if not os.path.exists(db_path):
+        raise FileNotFoundError(f"Suite2p did not create {{db_path}}")
+    plane_db = np.load(db_path, allow_pickle=True).item()
+    reg_file = plane_db.get("reg_file", os.path.join(plane0, "data.bin"))
+    Ly = int(plane_db.get("Ly", sample_frame.shape[0]))
+    Lx = int(plane_db.get("Lx", sample_frame.shape[1]))
+    n_binary_frames = os.path.getsize(reg_file) // (np.dtype("int16").itemsize * Ly * Lx)
+    if n_binary_frames == 0:
+        raise ValueError(f"Suite2p binary is empty: {{reg_file}}")
+
+    os.makedirs(reg_tif_dir, exist_ok=True)
+    movie = np.memmap(reg_file, dtype="int16", mode="r", shape=(n_binary_frames, Ly, Lx))
+    chunk = int(settings["extraction"]["batch_size"])
+    for start in range(0, n_binary_frames, chunk):
+        stop = min(start + chunk, n_binary_frames)
+        out_file = os.path.join(reg_tif_dir, f"file{{start // chunk:03d}}.tif")
+        tifffile.imwrite(out_file, np.asarray(movie[start:stop]), photometric="minisblack")
+    del movie
+
 print(f"finished: {mouse}_{trial}")
 '''
-    
+
     temp_script = f"temp_suite2p_{mouse}_{trial}.py"
     with open(temp_script, "w", encoding="utf-8") as f:
         f.write(script_content)
-    
+
     try:
         logger.info(f"Running in isolated process: {mouse}_{trial}")
         result = subprocess.run(
-            ["python", temp_script],
+            [sys.executable, temp_script],
             capture_output=True,
             text=True,
-            timeout=24 * 3600 # Timeout after ONE hour
+            timeout=24 * 3600,
         )
 
         if result.returncode == 0:
             logger.info(f"Process completed successfully: {mouse}_{trial}")
         else:
             logger.error(f"Process failed with return code {result.returncode}: {mouse}_{trial}")
-            logger.error(f"Error output: {result.stderr[:500]}")
+            logger.error(f"Error output: {result.stderr[-4000:]}")
+            raise RuntimeError(f"Suite2p failed for {mouse}_{trial}; see log for traceback.")
     except subprocess.TimeoutExpired:
         logger.exc(f"Process timed out: {mouse}_{trial}")
-    
+        raise
+
     finally:
         if os.path.exists(temp_script):
             os.remove(temp_script)
