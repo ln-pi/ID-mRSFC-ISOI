@@ -8,7 +8,7 @@ import pickle
 from srcs.utils.logger import setup_logger
 
 
-logger = setup_logger("logs/default.log")
+logger = setup_logger()
 
 
 def parse_args():

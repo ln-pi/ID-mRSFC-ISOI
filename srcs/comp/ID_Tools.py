@@ -6,17 +6,12 @@ from statsmodels.stats.diagnostic import lilliefors
 from scipy.stats import ttest_rel, wilcoxon, pearsonr
 from tqdm import tqdm
 
-from srcs.io.readers import load_config
-from srcs.utils.utils import parse_args, df_to_array
+from srcs.utils.utils import df_to_array
 from srcs.utils.logger import setup_logger
 from srcs.vis.PlotSeries import PlotSeries
 
 
-args = parse_args()
-config = load_config(args.config)
-if config is None:
-    raise ValueError("Config is empty (None). Exiting.")
-logger = setup_logger(config["paths"]["log"])
+logger = setup_logger()
 
 
 class Identify(object):
@@ -201,7 +196,11 @@ class Identify(object):
             "pearson_p_value": p_r
         }
     
-    def shuffle(self, iter=1000, figsize=(5, 4), dpi=180, save_path=None, show=True, log=False, tag="shuffle"):
+    def shuffle(self, iter=1000, figsize=(5, 4), dpi=180, save_path=None, show=True, log=False, tag="shuffle", plot_config=None):
+        plot_config = dict(plot_config or {})
+        figsize = tuple(plot_config.pop("figsize", figsize))
+        dpi = plot_config.pop("dpi", dpi)
+        atlas_tag = "_".join(self.atlas)
         acc, r_acc, c_acc = [], [], []
         real_acc, real_r_acc, real_c_acc = self.Calc_IdentificationAccuracy(self.sim_mat)
 
@@ -222,7 +221,7 @@ class Identify(object):
         c_acc = np.array(c_acc)
 
         logger.info(f"Real Accuracy = {real_acc:.4f}")
-        logger.info(f"Shuffle Accuracy = {np.mean(acc):.4f} ± {np.std(acc):.4f}")
+        logger.info(f"Shuffle Accuracy = {np.mean(acc):.4f} +/- {np.std(acc):.4f}")
         logger.info(f"Permutation p-value = {np.mean(acc >= real_acc):.6f}")
 
         if save_path is None:
@@ -230,25 +229,29 @@ class Identify(object):
         else:
             save = True
         
+        config = {
+            "bins": 20,
+            "range": (0, 1),
+            "facecolor": "lightgray",
+            "edgecolor": "dimgray",
+            "arrow_x": real_acc,
+            "arrow_color": "red",
+            "show_mean_arrow": True,
+            "mean_arrow_color": "gray",
+            "xlabel": "Identification Accuracy",
+            "ylabel": "Count",
+            "title": "Shuffle Distribution",
+            "arrow_text_format": "real={:.4f}",
+            "mean_text_format": "shuffle={:.4f}",
+        }
+        config.update(plot_config)
+        config["arrow_x"] = real_acc
+
         PlotSeries(figsize=figsize, dpi=dpi, save_path=save_path).add_plot(
             data=acc,
             plot_type="hist",
-            name=f"ID_shuffle_acc_{"_".join(self.atlas)}_excluded_{tag}",
-            config={
-                "bins": 20,
-                "range": (0, 1),
-                "facecolor": "lightgray",
-                "edgecolor": "dimgray",
-                "arrow_x": real_acc,
-                "arrow_color": "red",
-                "show_mean_arrow": True,
-                "mean_arrow_color": "gray",
-                "xlabel": "Identification Accuracy",
-                "ylabel": "Count",
-                "title": "Shuffle Distribution",
-                "arrow_text_format": "real={:.4f}",
-                "mean_text_format": "shuffle={:.4f}",
-            },
+            name=f"ID_shuffle_acc_{atlas_tag}_excluded_{tag}",
+            config=config,
         ).render(show=show, save=save, log=log)
 
         return {
@@ -259,7 +262,15 @@ class Identify(object):
             "p_perm": np.mean(acc >= real_acc),
         }
 
-    def output(self, figsize, dpi=180, tag="default", save_path=None, show=True, log=False):
+    def output(self, figsize=None, dpi=180, tag="default", save_path=None, show=True, log=False, paired_config=None, matrix_config=None):
+        paired_config = dict(paired_config or {})
+        matrix_config = dict(matrix_config or {})
+        atlas_tag = "_".join(self.atlas)
+        if figsize is None:
+            figsize = {
+                "line": paired_config.pop("figsize", (4, 6)),
+                "mat": matrix_config.pop("figsize", (6, 6)),
+            }
         logger.info(f"Cohen's d: {self.cohen_d}")
         logger.info(f"Similarity Matrix: min = {np.min(self.sim_mat)}, max = {np.max(self.sim_mat)}")
 
@@ -268,47 +279,62 @@ class Identify(object):
         else:
             save = True
 
-        PlotSeries(figsize=figsize["line"], dpi=dpi, save_path=save_path).add_plot(
+        line_figsize = tuple(paired_config.pop("figsize", figsize["line"]))
+        line_dpi = paired_config.pop("dpi", dpi)
+        line_config = {
+            "linecolor": "gray",
+            "alpha": 0.5,
+            "linewidth": 1.5,
+            "meancolor": "red",
+            "meanwidth": 3,
+            "xticklabels": ["Group", "Individual"],
+            "ylabel": "Network Similarity"
+        }
+        line_config.update(paired_config)
+
+        PlotSeries(figsize=line_figsize, dpi=line_dpi, save_path=save_path).add_plot(
             data=[self.Group, self.Indiv],
             plot_type="paired_vertical",
-            name=f"IDtest_paired_{'_'.join(self.atlas)}_excluded_{tag}",
-            config={
-                "linecolor": "gray",
-                "alpha": 0.5,
-                "linewidth": 1.5,
-                "meancolor": "red",
-                "meanwidth": 3,
-                "xticklabels": ["Group", "Individual"],
-                "ylabel": "Network Similarity"
-            }
+            name=f"IDtest_paired_{atlas_tag}_excluded_{tag}",
+            config=line_config,
         ).render(show=show, save=save, log=log)
 
-        PlotSeries(figsize=figsize["mat"], dpi=dpi, save_path=save_path).add_plot(
+        mat_figsize = tuple(matrix_config.pop("figsize", figsize["mat"]))
+        mat_dpi = matrix_config.pop("dpi", dpi)
+        tick_fontsize = matrix_config.pop("tick_fontsize", 10)
+        vmin_default = matrix_config.pop("vmin_default", 1.2)
+        vmax_default = matrix_config.pop("vmax_default", 3.0)
+        vmin_association = matrix_config.pop("vmin_association", 2.0)
+        vmax_association = matrix_config.pop("vmax_association", 3.5)
+        mat_config = {
+            "title": "Similarity Matrix",
+            "cmap": "inferno",
+            "cbar": True,
+            "axis": True,
+            "vmin": vmin_association if atlas_tag == "SM_VIS_AUD" else vmin_default,
+            "vmax": vmax_association if atlas_tag == "SM_VIS_AUD" else vmax_default,
+            "xlabel": self.labels[0],
+            "ylabel": self.labels[1],
+            "xticks": {
+                "ticks": np.arange(len(self.ticklabels)),
+                "labels": self.ticklabels,
+                "rotation": 90,
+                "fontsize": tick_fontsize
+            },
+            "yticks": {
+                "ticks": np.arange(len(self.ticklabels)),
+                "labels": self.ticklabels,
+                "rotation": 0,
+                "fontsize": tick_fontsize
+            }
+        }
+        mat_config.update(matrix_config)
+
+        PlotSeries(figsize=mat_figsize, dpi=mat_dpi, save_path=save_path).add_plot(
             self.sim_mat,
             plot_type="origin",
-            name=f"IDtest_simMat_{'_'.join(self.atlas)}_excluded_{tag}",
-            config={
-                "title": "Similarity Matrix",
-                "cmap": "inferno",
-                "cbar": True,
-                "axis": True,
-                "vmin": 2.0 if "_".join(self.atlas) == "SM_VIS_AUD" else 1.2,
-                "vmax": 3.5 if "_".join(self.atlas) == "SM_VIS_AUD" else 3.0,
-                "xlabel": self.labels[0],
-                "ylabel": self.labels[1],
-                "xticks": {
-                    "ticks": np.arange(len(self.ticklabels)),
-                    "labels": self.ticklabels,
-                    "rotation": 90,
-                    "fontsize": 10
-                },
-                "yticks": {
-                    "ticks": np.arange(len(self.ticklabels)),
-                    "labels": self.ticklabels,
-                    "rotation": 0,
-                    "fontsize": 10
-                }
-            }
+            name=f"IDtest_simMat_{atlas_tag}_excluded_{tag}",
+            config=mat_config,
         ).render(show=show, save=save, log=log)
 
 
@@ -328,10 +354,11 @@ class Edgewise_Contribution(object):
         self._load_data()
     
     def _load_data(self):
+        atlas_tag = "_".join(self.atlas)
         
         for session in tqdm(self.sessions, desc="Sessions", position=0, leave=False):
             
-            file_path = os.path.join(self.path, f"{session}_correlation_matrices_{"_".join(self.atlas)}_excluded.pkl")
+            file_path = os.path.join(self.path, f"{session}_correlation_matrices_{atlas_tag}_excluded.pkl")
             if not os.path.exists(file_path):
                 logger.warning(f"No file for session: {session}")
                 continue

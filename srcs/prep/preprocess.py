@@ -8,17 +8,13 @@ import tifffile
 from scipy import signal
 
 from srcs.utils.logger import setup_logger
-from srcs.utils.utils import normalize_data, parse_args
-from srcs.io.readers import load_config, Info_Reader, Graph_Reader_All
+from srcs.utils.utils import normalize_data
+from srcs.io.readers import Info_Reader, Graph_Reader_All
 from srcs.comp.Align_Tools import Match_Pattern
 from srcs.comp.Filters import Filter_2D
 
 
-args = parse_args()
-config = load_config(args.config)
-if config is None:
-    raise ValueError("Config is empty (None). Exiting.")
-logger = setup_logger(config["paths"]["log"])
+logger = setup_logger()
 
 
 def Bin2Tiff(folder, info_path, output_tiff="output.tiff", keepna=False):

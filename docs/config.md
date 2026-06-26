@@ -1,0 +1,155 @@
+# Configuration Reference
+
+Scripts read `configs/OIS.yaml` by default. Pass another config with `-c` or `--config`:
+
+```bash
+python scripts/01_preprocess.py -c configs/default.yaml
+```
+
+## paths
+
+```yaml
+paths:
+  raw: "data\\raw\\"
+  processed: "data\\processed\\"
+  output: "data\\output\\"
+  mask: "data\\mask\\"
+  log: "logs\\default.log"
+```
+
+- `raw`: root folder containing raw OIS data.
+- `processed`: root folder for intermediate outputs.
+- `output`: root folder for figures, statistics, and final outputs.
+- `mask`: folder containing ROI mask PNG files.
+- `log`: runtime log path.
+
+## variables
+
+```yaml
+variables:
+  dataset: "WT"
+  Session_ids: ["Session1", "Session2", "Session3", "Session4"]
+  Mouse_ids: ["A01", "A02"]
+  Trial_ids: ["Trial1", "Trial2"]
+  Atlas: [["SM", "VIS", "AUD"], ["None"]]
+```
+
+- `dataset`: dataset/group name used under `processed` and `output`.
+- `Session_ids`: sessions to process and analyze. `03_identification.py` loads pkl files in this exact order.
+- `Mouse_ids`: mice to process and analyze.
+- `Trial_ids`: trials to process and analyze.
+- `Atlas`: ROI exclusion sets. Each inner list is converted to an atlas tag with underscores.
+
+Examples:
+
+- `["SM", "VIS", "AUD"]` excludes ROI names containing `SM`, `VIS`, or `AUD`.
+- `["None"]` is used as the "whole brain" condition in current plotting labels.
+- `["AUDv"]` excludes ROI names containing `AUDv`.
+
+## preprocess
+
+```yaml
+preprocess:
+  keepna: False
+  bin:
+    time: 6
+    space: 4
+  filter:
+    highpass: 0.005
+    lopass: 1
+    fps: 5
+  robust: 2
+```
+
+- `keepna`: whether missing/zero frames should remain as missing values. Use `False` for the current preprocessing workflow.
+- `bin`: reserved for binning-related parameters.
+- `filter`: intended filtering parameters. The current `Filter_2D()` implementation uses fixed band-pass values internally.
+- `robust`: reserved for robust-processing settings.
+
+## ID
+
+```yaml
+ID:
+  group_mode: 14
+  shuffle: True
+  n_iter: 1000
+```
+
+- `group_mode`: how four sessions are split into two halves in `build_half_dataframe()`.
+  - `12`: Session 1 + Session 2 vs Session 3 + Session 4
+  - `13`: Session 1 + Session 3 vs Session 2 + Session 4
+  - `14`: Session 1 + Session 4 vs Session 2 + Session 3
+- `shuffle`: whether to run permutation testing in `03_identification.py`.
+- `n_iter`: number of shuffle/permutation iterations.
+
+## Edge
+
+```yaml
+Edge:
+  seed: 42
+  repeat: 50
+  threshold: 99
+  gap: 0.25
+  cross_only: False
+  save_mat: True
+```
+
+- `seed`: random seed for repeated edge contribution splits.
+- `repeat`: number of repeated random trial splits.
+- `threshold`: percentile threshold for circular graph visualization.
+- `gap`: visual gap between modules in circular graphs.
+- `cross_only`: whether to keep only cross-module edges.
+- `save_mat`: whether to save matrix-style companion figures from circular graph outputs.
+
+## visualization
+
+```yaml
+visualization:
+  defaults:
+    dpi: 180
+    show: False
+    save: True
+    log: False
+
+  fc_heatmap:
+    figsize: [8, 8]
+    cmap: "coolwarm"
+    vmin: -1
+    vmax: 1
+
+  stat_box:
+    figsize: [4, 4]
+    box_width: 0.1
+    showfliers: False
+```
+
+Visualization presets keep plotting style out of the analysis scripts.
+
+- `defaults`: shared render options used by scripts.
+- `fc_heatmap`: ROI functional connectivity heatmap style.
+- `id_shuffle_hist`: shuffle histogram style in individual identification.
+- `id_paired`: paired group/individual plot style.
+- `id_similarity_matrix`: similarity matrix style.
+- `edge_phi`: circular graph style for group-consistency edge contribution.
+- `edge_dp`: circular graph style for differential-power edge contribution.
+- `stat_box`: base boxplot style.
+- `stat_rel_effect_box`: extra options for relative-effect boxplots.
+- `stat_group_indiv_box`: extra options for group/individual boxplots.
+- `stat_mean_error`: group/individual trend-line style in statistics.
+
+Script-level presets are merged with plot-specific runtime values such as output names, labels, and data-dependent axis ticks.
+
+## Choosing a Config
+
+Use `configs/default.yaml` as a self-contained relative-path template.
+
+Use `configs/OIS.yaml` when working with the external OIS data root currently written in that file.
+
+For a new dataset, copy one of these files and edit:
+
+1. `paths.raw`
+2. `variables.dataset`
+3. `variables.Session_ids`
+4. `variables.Mouse_ids`
+5. `variables.Trial_ids`
+6. `variables.Atlas`

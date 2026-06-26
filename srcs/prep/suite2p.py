@@ -3,15 +3,9 @@ import subprocess
 import sys
 
 from srcs.utils.logger import setup_logger
-from srcs.utils.utils import parse_args
-from srcs.io.readers import load_config
 
 
-args = parse_args()
-config = load_config(args.config)
-if config is None:
-    raise ValueError("Config is empty (None). Exiting.")
-logger = setup_logger(config["paths"]["log"])
+logger = setup_logger()
 
 
 def run_isolated_process(tiff_file, mouse, trial, save_path):

@@ -1,11 +1,9 @@
-import glob
 import numpy as np
 import os
 import pandas as pd
 
-from srcs.io.readers import load_config
-from srcs.utils.utils import parse_args, build_half_dataframe
-from srcs.utils.logger import setup_logger
+from srcs.utils.config import load_context
+from srcs.utils.utils import build_half_dataframe
 from srcs.comp.ID_Tools import Identify, Edgewise_Contribution
 from srcs.vis.PlotSeries import PlotSeries
 from srcs.vis.circularGraph import circularGraph
@@ -17,42 +15,22 @@ warnings.filterwarnings(
 )
 
 
-args = parse_args()
-config = load_config(args.config)
-if config is None:
-    raise ValueError("Config is empty (None). Exiting.")
-logger = setup_logger(config["paths"]["log"])
-
-processed_root = config["paths"]["processed"]
-output_root = config["paths"]["output"]
-
-dataset = config["variables"]["dataset"]
-Session_ids = config["variables"]["Session_ids"]
-Mouse_ids = config["variables"]["Mouse_ids"]
-Trial_ids = config["variables"]["Trial_ids"]
-Atlas = config["variables"]["Atlas"]
-
-ID_group_mode = config["ID"]["group_mode"]
-ID_shuffle = config["ID"]["shuffle"]
-ID_n_iter = config["ID"]["n_iter"]
-
-Edge_seed = config["Edge"]["seed"]
-Edge_repeat = config["Edge"]["repeat"]
-Edge_threshold = config["Edge"]["threshold"]
-Edge_gap = config["Edge"]["gap"]
-Edge_cross_only = config["Edge"]["cross_only"]
-Edge_save_mat = config["Edge"]["save_mat"]
-
-processed_path = os.path.join(processed_root, dataset)
-output_path = os.path.join(output_root, dataset)
-os.makedirs(output_path, exist_ok=True)
+ctx = load_context()
+logger = ctx.logger
+id_cfg = ctx.section("ID")
+edge_cfg = ctx.section("Edge")
+render_options = ctx.render_options()
+rel_box_preset = ctx.viz_style("stat_box", "stat_rel_effect_box")
+group_indiv_box_preset = ctx.viz_style("stat_box", "stat_group_indiv_box")
+edge_phi_preset = ctx.viz_style("edge_phi")
+edge_dp_preset = ctx.viz_style("edge_dp")
 
 df = pd.DataFrame(
-    index=["_".join(atlas) for atlas in Atlas],
-    columns=[f"{n}Trial" for n in range(1, len(Trial_ids) + 1)],
+    index=["_".join(atlas) for atlas in ctx.atlases],
+    columns=[f"{n}Trial" for n in range(1, len(ctx.trials) + 1)],
 )
 
-for trial_cnt in range(len(Trial_ids)):
+for trial_cnt in range(len(ctx.trials)):
     data = [[], []]
     relE = []
     labels = []
@@ -60,31 +38,46 @@ for trial_cnt in range(len(Trial_ids)):
     trial_cnt += 1
     tag = f"{trial_cnt}Trial"
 
-    for atlas in Atlas:
+    for atlas in ctx.atlases:
         label = "_".join(atlas)
 
         logger.info(f"\n>>> {tag} Atlas {label} excluded:")
 
-        session_paths = glob.glob(os.path.join(processed_path, f"Session*_correlation_matrices_{label}_excluded.pkl"))
+        session_paths = [
+            os.path.join(ctx.processed_path, f"{session}_correlation_matrices_{label}_excluded.pkl")
+            for session in ctx.sessions
+        ]
+        missing_paths = [path for path in session_paths if not os.path.exists(path)]
+        if missing_paths:
+            logger.raise_(FileNotFoundError(
+                "Missing correlation matrix files from config sessions: "
+                + ", ".join(missing_paths)
+            ))
 
-        df_out = build_half_dataframe(session_paths, trial_cnt, ID_group_mode)
+        df_out = build_half_dataframe(session_paths, trial_cnt, id_cfg["group_mode"])
 
         # Identify
         ID = Identify(df_out, atlas_exclude=atlas)
         info, sim_mat, Indiv, Group, relEft, cohen_d = ID.ID_Test()
         stat = ID.statistics()
 
-        if ID_shuffle:
+        if id_cfg["shuffle"]:
             ID.shuffle(
-                iter=1000,
-                save_path=os.path.join(output_path, "Similarity"),
-                dpi=180, show=False, log=False,
+                iter=id_cfg["n_iter"],
+                save_path=ctx.output_dir("Similarity"),
+                show=render_options["show"],
+                log=render_options["log"],
+                plot_config=ctx.viz_style("id_shuffle_hist"),
             )
 
         ID.output(
-            figsize={"line": (4, 6), "mat": (6, 6)},
-            save_path=os.path.join(output_path, "Similarity"),
-            dpi=180, tag=tag, show=False, log=False,
+            save_path=ctx.output_dir("Similarity"),
+            dpi=ctx.figure_dpi(),
+            tag=tag,
+            show=render_options["show"],
+            log=render_options["log"],
+            paired_config=ctx.viz_style("id_paired"),
+            matrix_config=ctx.viz_style("id_similarity_matrix"),
         )
 
         # Edgewise Contribution
@@ -94,17 +87,16 @@ for trial_cnt in range(len(Trial_ids)):
         df.at["_".join(atlas), tag] = [Group, Indiv, relEft, stat, cohen_d]
 
         EC = Edgewise_Contribution(
-            path=processed_path,
-            mouse_ids=Mouse_ids,
-            sessions=Session_ids,
-            seed=Edge_seed,
+            path=ctx.processed_path,
+            mouse_ids=ctx.mice,
+            sessions=ctx.sessions,
+            seed=edge_cfg["seed"],
             atlas_exclude=atlas,
         )
 
-        Phi, DP = EC.run(repeat=Edge_repeat)
+        Phi, DP = EC.run(repeat=edge_cfg["repeat"])
 
-        save_path = os.path.join(output_path, "EdgeContri")
-        os.makedirs(save_path, exist_ok=True)
+        save_path = ctx.output_dir("EdgeContri")
 
         # Group Consistency (Phi)
         avg_phi = np.mean(list(Phi.values()), axis=0)
@@ -114,16 +106,13 @@ for trial_cnt in range(len(Trial_ids)):
 
         circularGraph(
             phi_mat, [lab.split("-")[1] for lab in info[2]],
-            node_color_mode="fixed",
+            **edge_phi_preset,
             node_color_spec=info[2],
-            edge_color_mode="fixed",
-            edge_fixed_color="blue",
-            edge_width_mode="fixed",
-            threshold=np.percentile(phi_mat, Edge_threshold),
-            gap=Edge_gap,
-            cross_only=Edge_cross_only,
-            save_path=os.path.join(save_path, f"EdgeContri_phi_{label}_excluded_thres{Edge_threshold}_{tag}"),
-            save_mat=Edge_save_mat
+            threshold=np.percentile(phi_mat, edge_cfg["threshold"]),
+            gap=edge_cfg["gap"],
+            cross_only=edge_cfg["cross_only"],
+            save_path=os.path.join(save_path, f"EdgeContri_phi_{label}_excluded_thres{edge_cfg['threshold']}_{tag}"),
+            save_mat=edge_cfg["save_mat"]
         )
 
         # Differential Power (DP)
@@ -134,16 +123,13 @@ for trial_cnt in range(len(Trial_ids)):
 
         circularGraph(
             dp_mat, [lab.split("-")[1] for lab in info[2]],
-            node_color_mode="fixed",
+            **edge_dp_preset,
             node_color_spec=info[2],
-            edge_color_mode="fixed",
-            edge_fixed_color="red",
-            edge_width_mode="fixed",
-            threshold=np.percentile(dp_mat, Edge_threshold),
-            gap=Edge_gap,
-            cross_only=Edge_cross_only,
-            save_path=os.path.join(save_path, f"EdgeContri_dp_{label}_excluded_thres{Edge_threshold}_{tag}"),
-            save_mat=Edge_save_mat
+            threshold=np.percentile(dp_mat, edge_cfg["threshold"]),
+            gap=edge_cfg["gap"],
+            cross_only=edge_cfg["cross_only"],
+            save_path=os.path.join(save_path, f"EdgeContri_dp_{label}_excluded_thres{edge_cfg['threshold']}_{tag}"),
+            save_mat=edge_cfg["save_mat"]
         )
 
         # labels
@@ -157,43 +143,32 @@ for trial_cnt in range(len(Trial_ids)):
             label = "AUDv excluded"
         labels.append(label)
     
-    PlotSeries(figsize=(4, 4), dpi=180, save_path=os.path.join(output_path, "Stat")).add_plot(
+    rel_box_cfg = dict(rel_box_preset)
+    rel_box = PlotSeries(
+        figsize=tuple(rel_box_cfg.pop("figsize", (4, 4))),
+        dpi=rel_box_cfg.pop("dpi", ctx.figure_dpi()),
+        save_path=ctx.output_dir("Stat"),
+    )
+    rel_box.box(
         relE,
-        plot_type="box",
         name=f"boxmap_relEffect_{tag}",
-        config = {
-            "box_width": 0.1,
-            "box_alpha": 0.7,
-            "box_color": None,
-            "showfliers": False,
-            "fontsize": 7,
-            "rotation": 0,
-            "grid": False,
-            "xticklabel": labels,
-            "show_legend": False,
-            "show_sub_label": True,
-            "hide_ns": True,
-        }
-    ).render(show=False, save=True, log=False)
+        xticklabel=labels,
+        **rel_box_cfg,
+    ).render(**render_options)
 
-    PlotSeries(figsize=(4, 4), dpi=180, save_path=os.path.join(output_path, "Stat")).add_plot(
+    group_indiv_box_cfg = dict(group_indiv_box_preset)
+    group_indiv_box = PlotSeries(
+        figsize=tuple(group_indiv_box_cfg.pop("figsize", (4, 4))),
+        dpi=group_indiv_box_cfg.pop("dpi", ctx.figure_dpi()),
+        save_path=ctx.output_dir("Stat"),
+    )
+    group_indiv_box.box(
         data,
-        plot_type="box",
         name=f"boxmap_Group-Indiv_{tag}",
-        config={
-            "box_width": 0.1,
-            "box_alpha": 0.7,
-            "box_color": None,
-            "showfliers": False,
-            "fontsize": 7,
-            "rotation": 0,
-            "group_gap": 2,
-            "grid": False,
-            "xticklabel": labels,
-            "hide_ns": True,
-        }
-    ).render(show=False, save=True, log=False)
+        xticklabel=labels,
+        **group_indiv_box_cfg,
+    ).render(**render_options)
 
-df_save_path = os.path.join(output_path, "statistics.pkl")
+df_save_path = os.path.join(ctx.output_path, "statistics.pkl")
 df.to_pickle(df_save_path)
 logger.info("\nStatistics done output.")

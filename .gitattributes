@@ -1,0 +1,27 @@
+* text=auto
+
+*.py text eol=lf
+*.md text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.txt text eol=lf
+*.cff text eol=lf
+*.gitignore text eol=lf
+*.gitattributes text eol=lf
+
+*.ipynb text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.tif binary
+*.tiff binary
+*.npy binary
+*.npz binary
+*.pkl binary
+*.bin binary
+*.mat binary
+*.pdf binary
+*.pptx binary
+*.docx binary

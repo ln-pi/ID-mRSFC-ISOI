@@ -10,7 +10,7 @@ from srcs.io.writers import mkdir, save_as_npy, save_as_mat
 from srcs.utils.logger import setup_logger
 
 
-logger = setup_logger("logs/default.log")
+logger = setup_logger()
 
 
 def Single_Folder_Processor(inpath, expath, save_format="python", nan=False):

@@ -9,7 +9,7 @@ from matplotlib.patches import FancyArrowPatch
 from srcs.utils.logger import setup_logger
 
 
-logger = setup_logger("logs/default.log")
+logger = setup_logger()
 
 
 class Node:

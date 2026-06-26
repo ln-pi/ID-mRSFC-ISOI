@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use this repository, please cite it using the metadata below."
+type: software
+title: "ID-mRSFC-ISOI"
+abstract: "A Python workflow for mouse resting-state functional connectivity analysis from intrinsic signal optical imaging data, including preprocessing, Suite2p motion correction, atlas registration, functional connectivity estimation, and individual identification analysis."
+authors:
+  - name: "ln-pi"
+    email: "TiehnanHOU@gmail.com"
+license: MIT
+repository-code: "https://github.com/ln-pi/ID-mRSFC-ISOI"
+keywords:
+  - "intrinsic signal optical imaging"
+  - "resting-state functional connectivity"
+  - "mouse"
+  - "Suite2p"
+  - "individual identification"

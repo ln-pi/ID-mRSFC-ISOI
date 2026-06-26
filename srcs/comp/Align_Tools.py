@@ -14,15 +14,9 @@ from tqdm import tqdm
 
 from srcs.atlas.Atlas_Mask import Mask_Generator
 from srcs.utils.logger import setup_logger
-from srcs.io.readers import load_config
-from srcs.utils.utils import parse_args
 
 
-args = parse_args()
-config = load_config(args.config)
-if config is None:
-    raise ValueError("Config is empty (None). Exiting.")
-logger = setup_logger(config["paths"]["log"])
+logger = setup_logger()
 
 
 def tqdm_input(prompt):

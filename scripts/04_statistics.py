@@ -8,37 +8,21 @@ from scipy.stats import ttest_rel
 from statsmodels.stats.anova import AnovaRM
 from statsmodels.stats.multitest import multipletests
 
-from srcs.io.readers import load_config
-from srcs.utils.utils import parse_args
-from srcs.utils.logger import setup_logger
+from srcs.utils.config import load_context
 from srcs.vis.PlotSeries import PlotSeries
 
 
-args = parse_args()
-config = load_config(args.config)
-if config is None:
-    raise ValueError("Config is empty (None). Exiting.")
-logger = setup_logger(config["paths"]["log"])
+ctx = load_context()
+logger = ctx.logger
+render_options = ctx.render_options()
+mean_error_cfg = ctx.viz_style("stat_mean_error")
 
-processed_root = config["paths"]["processed"]
-output_root = config["paths"]["output"]
-
-dataset = config["variables"]["dataset"]
-Session_ids = config["variables"]["Session_ids"]
-Mouse_ids = config["variables"]["Mouse_ids"]
-Trial_ids = config["variables"]["Trial_ids"]
-Atlas = config["variables"]["Atlas"]
-
-processed_path = os.path.join(processed_root, dataset)
-output_path = os.path.join(output_root, dataset)
-os.makedirs(output_path, exist_ok=True)
-
-stat_df_path = os.path.join(output_path, "statistics.pkl")
+stat_df_path = os.path.join(ctx.output_path, "statistics.pkl")
 with open(stat_df_path, "rb") as f:
     stat = pickle.load(f)
 
 # Plot Group-Indiv-Diff curve
-for atlas in Atlas:
+for atlas in ctx.atlases:
     data, title = [], []
     ind = "_".join(atlas)
     logger.info(f"\n>>> Current class: {ind}")
@@ -49,22 +33,17 @@ for atlas in Atlas:
     data.append((group, indiv))
     title.append(ind)
 
-    PlotSeries(figsize=(8, 6), dpi=180, save_path=os.path.join(output_path, "Stat")).add_plot(
+    plot_cfg = dict(mean_error_cfg)
+    plot_cfg["title"] = title[0]
+    PlotSeries(
+        figsize=tuple(plot_cfg.pop("figsize", (8, 6))),
+        dpi=plot_cfg.pop("dpi", ctx.figure_dpi()),
+        save_path=ctx.output_dir("Stat"),
+    ).mean_error(
         data=(group, indiv),
-        plot_type="mean_error",
         name=f"Line_Group-Indiv_{ind}_gradient",
-        config={
-            "error_type": "sem",
-            "use_fill": False,
-            "labels": ("Group", "Individual"),
-            "show_diff": True,
-            "diff_mode": "gradient",
-            "diff_ylabel": "Gradient",
-            "xlabel": "Trials",
-            "ylabel": "Value",
-            "title": title[0]
-        }
-    ).render(show=False, save=True, log=False)
+        **plot_cfg,
+    ).render(**render_options)
 
     rows = []
     for trial in stat.columns:

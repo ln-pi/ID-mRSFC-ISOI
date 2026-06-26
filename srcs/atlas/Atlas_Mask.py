@@ -8,7 +8,7 @@ from srcs.io.readers import Load_Variable
 from srcs.utils.logger import setup_logger
 
 
-logger = setup_logger("logs/app.log")
+logger = setup_logger()
 
 
 class Mask_Generator(object):

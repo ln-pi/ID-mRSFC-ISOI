@@ -8,7 +8,7 @@ from tqdm import tqdm
 from srcs.utils.logger import setup_logger
 
 
-logger = setup_logger("logs/default.log")
+logger = setup_logger()
 
 
 def mkdir(path, log=True):

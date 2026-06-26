@@ -6,14 +6,74 @@ import pandas as pd
 import seaborn as sns
 import sys
 
+from dataclasses import dataclass, field
 from datetime import datetime
 from matplotlib.patches import Patch
 from scipy.stats import wilcoxon, ttest_rel
+from typing import Any
 
 from srcs.utils.logger import setup_logger
 
 
-logger = setup_logger("logs/default.log")
+logger = setup_logger()
+
+
+@dataclass
+class PlotTask:
+    data: Any
+    plot_type: str = "heatmap"
+    name: str | None = None
+    config: dict[str, Any] = field(default_factory=dict)
+    slice_dim: Any = None
+    fmt: str | None = None
+
+
+def roi_tick_config(names, fontsize_small=10, fontsize_scale=300):
+    labels = [n.split("-", 1)[1] if "-" in n else n for n in names]
+    fontsize = fontsize_scale / len(names) if len(names) >= 30 else fontsize_small
+    ticks = np.arange(len(names)) + 0.5
+    return {
+        "xticks": {
+            "ticks": ticks,
+            "labels": labels,
+            "rotation": 90,
+            "fontsize": fontsize,
+        },
+        "yticks": {
+            "ticks": ticks,
+            "labels": labels,
+            "rotation": 0,
+            "fontsize": fontsize,
+        },
+    }
+
+
+def fc_heatmap_config(names, **overrides):
+    overrides = dict(overrides)
+    fontsize_small = overrides.pop("label_fontsize_small", 10)
+    fontsize_scale = overrides.pop("label_fontsize_scale", 300)
+    config = {
+        "center": 0,
+        "vmin": -1,
+        "vmax": 1,
+        "square": True,
+        "cmap": "coolwarm",
+        "cbar": True,
+    }
+    config.update(roi_tick_config(names, fontsize_small=fontsize_small, fontsize_scale=fontsize_scale))
+    config.update(overrides)
+    return config
+
+
+def save_fc_heatmap(data, names, name, save_path, figsize=(8, 8), dpi=180, show=False, save=True, log=False, config=None):
+    config = dict(config or {})
+    figsize = tuple(config.pop("figsize", figsize))
+    dpi = config.pop("dpi", dpi)
+    return (
+        PlotSeries(figsize=figsize, dpi=dpi, save_path=save_path)
+        .fc_heatmap(data, names=names, name=name, **config)
+        .render(show=show, save=save, log=log)
+    )
 
 
 class PlotSeries:
@@ -41,23 +101,56 @@ class PlotSeries:
     # API
     # ====================
     def add_plot(self, data, slice_dim=None, plot_type="heatmap", config=None, name=None, fmt=None):
-        self.plot_tasks.append({
-            "name": name,
-            "data": data,
-            "slice_dim": slice_dim,
-            "plot_type": plot_type,
-            "config": config or {},
-            "fmt": fmt
-        })
+        self.plot_tasks.append(PlotTask(
+            name=name,
+            data=data,
+            slice_dim=slice_dim,
+            plot_type=plot_type,
+            config=config or {},
+            fmt=fmt,
+        ))
         return self
+
+    def add(self, data, plot_type="heatmap", name=None, slice_dim=None, fmt=None, **config):
+        return self.add_plot(data, slice_dim=slice_dim, plot_type=plot_type, config=config, name=name, fmt=fmt)
+
+    def heatmap(self, data, name=None, slice_dim=None, fmt=None, **config):
+        return self.add(data, plot_type="heatmap", name=name, slice_dim=slice_dim, fmt=fmt, **config)
+
+    def fc_heatmap(self, data, names, name=None, slice_dim=None, fmt=None, **overrides):
+        return self.heatmap(
+            data,
+            name=name,
+            slice_dim=slice_dim,
+            fmt=fmt,
+            **fc_heatmap_config(names, **overrides),
+        )
+
+    def origin(self, data, name=None, slice_dim=None, fmt=None, **config):
+        return self.add(data, plot_type="origin", name=name, slice_dim=slice_dim, fmt=fmt, **config)
+
+    def box(self, data, name=None, slice_dim=None, fmt=None, **config):
+        return self.add(data, plot_type="box", name=name, slice_dim=slice_dim, fmt=fmt, **config)
+
+    def hist(self, data, name=None, slice_dim=None, fmt=None, **config):
+        return self.add(data, plot_type="hist", name=name, slice_dim=slice_dim, fmt=fmt, **config)
+
+    def mean_error(self, data, name=None, slice_dim=None, fmt=None, **config):
+        return self.add(data, plot_type="mean_error", name=name, slice_dim=slice_dim, fmt=fmt, **config)
+
+    def paired_vertical(self, data, name=None, slice_dim=None, fmt=None, **config):
+        return self.add(data, plot_type="paired_vertical", name=name, slice_dim=slice_dim, fmt=fmt, **config)
+
+    def raw_save(self, data, name=None, slice_dim=None, fmt=None, **config):
+        return self.add(data, plot_type="raw_save", name=name, slice_dim=slice_dim, fmt=fmt, **config)
     
     def render(self, show=False, save=True, log=True, dpi=300):
         if len(self.plot_tasks) == 0:
             logger.warning("No plot tasks to render.")
             return None, None
         
-        raw_tasks = [t for t in self.plot_tasks if t["plot_type"] == "raw_save"]
-        normal_tasks = [t for t in self.plot_tasks if t["plot_type"] != "raw_save"]
+        raw_tasks = [t for t in self.plot_tasks if t.plot_type == "raw_save"]
+        normal_tasks = [t for t in self.plot_tasks if t.plot_type != "raw_save"]
 
         fig, axes = None, None
         if len(normal_tasks) != 0:
@@ -72,9 +165,9 @@ class PlotSeries:
             axes = np.array(axes).reshape(-1)
 
             for ax, task in zip(axes, normal_tasks):
-                data = self._slice_data(task["data"], task["slice_dim"])
-                plot_type = task["plot_type"]
-                cfg = task["config"]
+                data = self._slice_data(task.data, task.slice_dim)
+                plot_type = task.plot_type
+                cfg = task.config
 
                 method = getattr(self, f"_plot_{plot_type}", None)
                 if method is None:
@@ -97,11 +190,11 @@ class PlotSeries:
                     self._plot_raw_save(task, base_dir=base_dir, log=log, dpi=dpi)
             
             if len(normal_tasks) == 1:
-                name = normal_tasks[0].get("name") or "figure"
+                name = normal_tasks[0].name or "figure"
                 base_path = os.path.join(base_dir, name)
-                self.save(base_path, task_fmt=normal_tasks[0].get("fmt"), log=log, dpi=dpi)
+                self.save(base_path, task_fmt=normal_tasks[0].fmt, log=log, dpi=dpi)
             elif len(normal_tasks) > 1:
-                self._save_by_name(base_dir=base_dir, log=log, dpi=dpi)
+                self._save_by_name(normal_tasks, base_dir=base_dir, log=log, dpi=dpi)
 
         if show:
             plt.show()
@@ -162,15 +255,15 @@ class PlotSeries:
         time_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         return f"figure_{time_stamp}.{fmt}"
     
-    def _save_by_name(self, base_dir="figs", log=True, dpi=300):
+    def _save_by_name(self, tasks, base_dir="figs", log=True, dpi=300):
         if self._fig is None:
             logger.error("No figure to save!")
             raise RuntimeError("No figure to save!")
         
         os.makedirs(base_dir, exist_ok=True)
-        for idx, (ax, task) in enumerate(zip(self._axes, self.plot_tasks)):
-            name = task["name"] or f"plot_{idx}"
-            fmt = self._resolve_format(task.get("fmt"))
+        for idx, (ax, task) in enumerate(zip(self._axes, tasks)):
+            name = task.name or f"plot_{idx}"
+            fmt = self._resolve_format(task.fmt)
             self._check_fmt_compatibility(fmt, mode="figure")
             path = os.path.join(base_dir, f"{name}.{fmt}")
             fig = ax.figure
@@ -289,10 +382,10 @@ class PlotSeries:
     # ====================
     def _plot_raw_save(self, task, base_dir, log=True, dpi=300):
         # skip plotting
-        data = self._slice_data(task["data"], task["slice_dim"])
-        cfg = task["config"]
-        name = task["name"] or "raw"
-        fmt = self._resolve_format(task.get("fmt"))
+        data = self._slice_data(task.data, task.slice_dim)
+        cfg = task.config
+        name = task.name or "raw"
+        fmt = self._resolve_format(task.fmt)
         self._check_fmt_compatibility(fmt, mode="image")
         os.makedirs(base_dir, exist_ok=True)
         path = os.path.join(base_dir, f"{name}.{fmt}")
