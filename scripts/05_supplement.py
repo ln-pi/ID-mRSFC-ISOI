@@ -1,251 +1,203 @@
+import os
+import pickle
+
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
-from statsmodels.stats.anova import AnovaRM
 from statsmodels.multivariate.manova import MANOVA
+from statsmodels.stats.anova import AnovaRM
 
+from srcs.utils.config import load_context
 from srcs.vis.PlotSeries import PlotSeries
 
 
 class StructureAnalyzer:
-
-    def __init__(self, DD, ND, group_names=("A", "B", "C")):
-
-        self.groups = group_names
+    def __init__(self, DD, ND, group_names=("A", "B", "C"), logger=None):
+        self.groups = list(group_names)
+        self.logger = logger
 
         self.DD = {
-            group_names[0]: np.asarray(DD[0]),
-            group_names[1]: np.asarray(DD[1]),
-            group_names[2]: np.asarray(DD[2])
+            group: np.asarray(values)
+            for group, values in zip(self.groups, DD)
         }
-
         self.ND = {
-            group_names[0]: np.asarray(ND[0]),
-            group_names[1]: np.asarray(ND[1]),
-            group_names[2]: np.asarray(ND[2])
+            group: np.asarray(values)
+            for group, values in zip(self.groups, ND)
         }
 
         self.n_trials = len(DD[0])
-
         self.df_rm = self._build_rm_dataframe()
         self.df_manova = self._build_manova_dataframe()
 
-    # =====================================================
-    # dataframe
-    # =====================================================
-
     def _build_rm_dataframe(self):
-
         rows = []
-
         for trial in range(self.n_trials):
-
             for group in self.groups:
-
                 rows.append({
                     "trial": trial,
                     "group": group,
                     "DD": self.DD[group][trial],
-                    "ND": self.ND[group][trial]
+                    "ND": self.ND[group][trial],
                 })
-
         return pd.DataFrame(rows)
 
     def _build_manova_dataframe(self):
-
         rows = []
-
         for group in self.groups:
-
             for trial in range(self.n_trials):
-
                 rows.append({
                     "group": group,
                     "DD": self.DD[group][trial],
-                    "ND": self.ND[group][trial]
+                    "ND": self.ND[group][trial],
                 })
-
         return pd.DataFrame(rows)
 
-    # =====================================================
-    # RM ANOVA
-    # =====================================================
-
     def rm_anova_dd(self):
-
-        aov = AnovaRM(
+        return AnovaRM(
             data=self.df_rm,
             depvar="DD",
             subject="trial",
-            within=["group"]
-        )
-
-        return aov.fit()
+            within=["group"],
+        ).fit()
 
     def rm_anova_nd(self):
-
-        aov = AnovaRM(
+        return AnovaRM(
             data=self.df_rm,
             depvar="ND",
             subject="trial",
-            within=["group"]
-        )
-
-        return aov.fit()
-
-    # =====================================================
-    # MANOVA
-    # =====================================================
+            within=["group"],
+        ).fit()
 
     def manova(self):
+        return MANOVA.from_formula("DD + ND ~ group", data=self.df_manova).mv_test()
 
-        return MANOVA.from_formula(
-            "DD + ND ~ group",
-            data=self.df_manova
-        ).mv_test()
+    def plot_box(self, metric, save_path=None, figsize=(5, 4), dpi=180, show=False, save=True, log=False, config=None):
+        metric = metric.upper()
+        values = self.DD if metric == "DD" else self.ND
+        cfg = dict(config or {})
+        cfg.setdefault("xticklabel", self.groups)
+        cfg.setdefault("ylabel", metric)
 
-    # =====================================================
-    # Boxplot
-    # =====================================================
-
-    def plot_dd_box(self,save_path=None):
-
-        PlotSeries(figsize=(5, 4), dpi=180, save_path=save_path).add_plot(
-            [self.DD[g] for g in self.groups],
-            plot_type="box",
-            name="boxplot_DD",
-            config={
-                "box_width": 0.1,
-                "box_alpha": 0.7,
-                "box_color": None,
-                "showfliers": False,
-                "fontsize": 7,
-                "rotation": 0,
-                "xticklabel": self.groups,
-                "grid": False,
-                "ylabel": "DD",
-                "title": "Diagonal Dominance (DD)",
-                "show_legend": False,
-                "show_sub_label": True,
-                "hide_ns": True,
-            }
-        ).render(show=False, save=True, log=False)
-
-    def plot_nd_box(self,save_path=None):
-
-        PlotSeries(figsize=(5, 4), dpi=180, save_path=save_path).add_plot(
-            [self.ND[g] for g in self.groups],
-            plot_type="box",
-            name="boxplot_ND",
-            config={
-                "box_width": 0.1,
-                "box_alpha": 0.7,
-                "box_color": None,
-                "showfliers": False,
-                "fontsize": 7,
-                "rotation": 0,
-                "xticklabel": self.groups,
-                "grid": False,
-                "ylabel": "ND",
-                "title": "Normalized Distance (ND)",
-                "show_legend": False,
-                "show_sub_label": True,
-                "hide_ns": True,
-            }
-        ).render(show=False, save=True, log=False)
-
-    # =====================================================
-    # DD-ND Structure Space
-    # =====================================================
-
-    def plot_structure_space(self, save_path=None):
-
-        plt.figure(figsize=(6, 5))
-
-        for g in self.groups:
-
-            plt.scatter(
-                self.DD[g],
-                self.ND[g],
-                label=g,
-                s=60
+        return (
+            PlotSeries(figsize=figsize, dpi=dpi, save_path=save_path)
+            .box(
+                [values[g] for g in self.groups],
+                name=f"boxplot_{metric}",
+                **cfg,
             )
+            .render(show=show, save=save, log=log)
+        )
 
-        plt.xlabel("DD")
-        plt.ylabel("ND")
-
-        plt.title("Structure Space")
-
-        plt.legend()
-
-        plt.tight_layout()
-
-        if save_path:
-            plt.savefig(f"{save_path}/structure_space.png", dpi=180)
-        else:
-            plt.savefig("structure_space.png", dpi=180)
-
-    # =====================================================
-    # summary
-    # =====================================================
+    def plot_structure_space(self, save_path=None, figsize=(6, 5), dpi=180, show=False, save=True, log=False, config=None):
+        data = [
+            {"x": self.DD[group], "y": self.ND[group], "label": group}
+            for group in self.groups
+        ]
+        return (
+            PlotSeries(figsize=figsize, dpi=dpi, save_path=save_path)
+            .scatter(data, name="structure_space", **dict(config or {}))
+            .render(show=show, save=save, log=log)
+        )
 
     def summary(self):
+        outputs = {
+            "RM-ANOVA DD": self.rm_anova_dd(),
+            "RM-ANOVA ND": self.rm_anova_nd(),
+            "MANOVA": self.manova(),
+        }
+        for title, result in outputs.items():
+            message = f"\n========== {title} ==========\n{result}"
+            if self.logger is None:
+                print(message)
+            else:
+                self.logger.info(message)
+        return outputs
 
-        print("\n========== RM-ANOVA DD ==========")
-        print(self.rm_anova_dd())
 
-        print("\n========== RM-ANOVA ND ==========")
-        print(self.rm_anova_nd())
+def _atlas_tag(atlas):
+    return "_".join(atlas)
 
-        print("\n========== MANOVA ==========")
-        print(self.manova())
+
+def build_structure_inputs(stat, group_atlases, exclude=None):
+    exclude = set(exclude or [])
+    group_tags = [_atlas_tag(atlas) for atlas in group_atlases]
+    DD = [[] for _ in group_tags]
+    ND = [[] for _ in group_tags]
+
+    for trial in stat.columns:
+        systems = [system for system in stat.index.tolist() if system not in exclude]
+        data = {
+            system: {
+                "DD": stat.loc[system, trial][3]["diagonal_dominance"],
+                "ND": stat.loc[system, trial][3]["normalized_distance_to_diagonal"],
+            }
+            for system in systems
+        }
+
+        for idx, tag in enumerate(group_tags):
+            if tag not in data:
+                continue
+            DD[idx].append(data[tag]["DD"])
+            ND[idx].append(data[tag]["ND"])
+
+    return DD, ND
+
+
+def main():
+    ctx = load_context()
+    logger = ctx.logger
+    supplement_cfg = ctx.section("supplement")
+    render_options = ctx.render_options()
+
+    stat_file = supplement_cfg.get("statistics_file", "statistics.pkl")
+    stat_df_path = os.path.join(ctx.output_path, stat_file)
+    with open(stat_df_path, "rb") as f:
+        stat = pickle.load(f)
+
+    group_atlases = supplement_cfg.get(
+        "structure_atlases",
+        [atlas for atlas in ctx.atlases if _atlas_tag(atlas) != "AUDv"],
+    )
+    group_names = supplement_cfg.get(
+        "structure_group_names",
+        [_atlas_tag(atlas) for atlas in group_atlases],
+    )
+    exclude = supplement_cfg.get("exclude", ["AUDv"])
+
+    DD, ND = build_structure_inputs(stat, group_atlases, exclude=exclude)
+    analyzer = StructureAnalyzer(DD, ND, group_names=group_names, logger=logger)
+    analyzer.summary()
+
+    save_path = ctx.output_dir("Stat")
+
+    dd_box_cfg = ctx.viz_style("stat_box", "supplement_dd_box")
+    nd_box_cfg = ctx.viz_style("stat_box", "supplement_nd_box")
+    space_cfg = ctx.viz_style("supplement_structure_space")
+
+    analyzer.plot_box(
+        "DD",
+        save_path=save_path,
+        figsize=tuple(dd_box_cfg.pop("figsize", (5, 4))),
+        dpi=dd_box_cfg.pop("dpi", ctx.figure_dpi()),
+        config=dd_box_cfg,
+        **render_options,
+    )
+    analyzer.plot_box(
+        "ND",
+        save_path=save_path,
+        figsize=tuple(nd_box_cfg.pop("figsize", (5, 4))),
+        dpi=nd_box_cfg.pop("dpi", ctx.figure_dpi()),
+        config=nd_box_cfg,
+        **render_options,
+    )
+    analyzer.plot_structure_space(
+        save_path=save_path,
+        figsize=tuple(space_cfg.pop("figsize", (6, 5))),
+        dpi=space_cfg.pop("dpi", ctx.figure_dpi()),
+        config=space_cfg,
+        **render_options,
+    )
 
 
 if __name__ == "__main__":
-    import pickle
-
-    output_path = r"F:\Hou.T.N\ID-mRSFC-ISOI\data\output\WT\Stat"
-    stat_df_path = r"F:\Hou.T.N\ID-mRSFC-ISOI\data\output\WT\statistics.pkl"
-    with open(stat_df_path, "rb") as f:
-        stat = pickle.load(f)
-    
-    Atlas = [["SM", "VIS", "AUD"], ["PF", "LAT", "MED"], ["None"]]
-
-    DD = [[], [], []]
-    ND = [[], [], []]
-    for trial in stat.columns:
-
-        exclude = "AUDv"
-        systems = [s for s in stat.index.tolist() if s not in exclude]
-
-        data_dict = {}
-        for sys in systems:
-
-            cell = stat.loc[sys, trial]
-
-            data_dict[sys] = {
-                "group": np.array(cell[0]),
-                "indiv": np.array(cell[1]),
-                "rel": np.array(cell[2]),
-                "DD": cell[3]["diagonal_dominance"],
-                "ND": cell[3]["normalized_distance_to_diagonal"],
-            }
-
-        for sys in systems:
-            if sys in "_".join(Atlas[0]):
-                idx = 0
-            elif sys in "_".join(Atlas[1]):
-                idx = 1
-            else:
-                idx = 2
-
-            DD[idx].append(data_dict[sys]["DD"])
-            ND[idx].append(data_dict[sys]["ND"])
-    
-    analyzer = StructureAnalyzer(DD, ND, group_names=["Association", "Sensory", "Whole Brain"])
-    analyzer.summary()
-    analyzer.plot_dd_box(save_path=output_path)
-    analyzer.plot_nd_box(save_path=output_path)
-    analyzer.plot_structure_space(save_path=output_path)
-    
+    main()

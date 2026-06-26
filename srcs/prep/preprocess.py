@@ -119,9 +119,7 @@ def merge_tiffs(input_dir, merged_path):
     return merged_video
 
 
-def Affine_Atlas(processed_path, session, mouse, trial):
-    logger.info(f"Processing Session: {session}, Mouse: {mouse}, Trail: {trial}")
-
+def Affine_Atlas(processed_path, mouse, trial):
     tiff_path = os.path.join(processed_path, f"{mouse}_{trial}_merged.tif")
     with tifffile.TiffFile(tiff_path) as tif:
         video_data = tif.asarray()
@@ -141,9 +139,7 @@ def Affine_Atlas(processed_path, session, mouse, trial):
     cv2.imwrite(os.path.join(processed_path, f"{mouse}_{trial}_Average_After.png"), transformed_stacks.mean(0).astype("u2"))
 
 
-def drr_narrow(processed_path, session, mouse, trial):
-    logger.info(f"Processing Mouse: {mouse}, Trial: {trial}, Session: {session}")
-
+def drr_narrow(processed_path, mouse, trial):
     affine_data = np.load(os.path.join(processed_path, f"{mouse}_{trial}_Affine.npy"))
     chambermask = cv2.imread(os.path.join(processed_path, "Chamber_Mask.png"), 0) > 0
     mask_data = affine_data * chambermask

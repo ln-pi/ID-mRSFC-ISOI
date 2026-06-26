@@ -308,7 +308,7 @@ python scripts/05_supplement.py
 
 This script defines `StructureAnalyzer`, which compares diagonal dominance (DD) and normalized distance to diagonal (ND) across systems using RM-ANOVA, MANOVA, and structure-space plots.
 
-The `__main__` block currently contains hard-coded paths. Edit those paths before running it directly.
+It reads `statistics.pkl`, compared atlas groups, excluded rows, and plot styles from the active YAML config.
 
 ## Key Outputs
 

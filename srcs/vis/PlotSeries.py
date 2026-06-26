@@ -141,6 +141,9 @@ class PlotSeries:
     def paired_vertical(self, data, name=None, slice_dim=None, fmt=None, **config):
         return self.add(data, plot_type="paired_vertical", name=name, slice_dim=slice_dim, fmt=fmt, **config)
 
+    def scatter(self, data, name=None, slice_dim=None, fmt=None, **config):
+        return self.add(data, plot_type="scatter", name=name, slice_dim=slice_dim, fmt=fmt, **config)
+
     def raw_save(self, data, name=None, slice_dim=None, fmt=None, **config):
         return self.add(data, plot_type="raw_save", name=name, slice_dim=slice_dim, fmt=fmt, **config)
     
@@ -763,6 +766,10 @@ class PlotSeries:
         )
         if cfg.get("title", None) is not None:
             ax.set_title(cfg.get("title", None))
+        if cfg.get("xlabel", None) is not None:
+            ax.set_xlabel(cfg.get("xlabel", None))
+        if cfg.get("ylabel", None) is not None:
+            ax.set_ylabel(cfg.get("ylabel", None))
         ax.grid(cfg.get("grid", False))
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
@@ -986,6 +993,35 @@ class PlotSeries:
         ax.set_ylabel(ylabel)
         if title is not None:
             ax.set_title(title)
+        ax.grid(cfg.get("grid", False))
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+
+    def _plot_scatter(self, ax, data, cfg):
+        if isinstance(data, dict):
+            series = [data]
+        else:
+            series = data
+
+        for idx, item in enumerate(series):
+            x = np.asarray(item["x"])
+            y = np.asarray(item["y"])
+            label = item.get("label", cfg.get("labels", [None] * len(series))[idx])
+            ax.scatter(
+                x,
+                y,
+                label=label,
+                s=cfg.get("s", 60),
+                alpha=cfg.get("alpha", 0.9),
+                marker=item.get("marker", cfg.get("marker", "o")),
+            )
+
+        ax.set_xlabel(cfg.get("xlabel", "x"))
+        ax.set_ylabel(cfg.get("ylabel", "y"))
+        if "title" in cfg:
+            ax.set_title(cfg["title"])
+        if cfg.get("legend", True):
+            ax.legend(frameon=cfg.get("legend_frameon", False))
         ax.grid(cfg.get("grid", False))
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)

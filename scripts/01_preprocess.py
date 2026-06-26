@@ -17,6 +17,8 @@ try:
     for session in ctx.sessions:
         for mouse in ctx.mice:
             for trial in ctx.trials:
+                pbar.set_postfix({"Session": session, "Mouse": mouse, "Trial": trial})
+                logger.info(f"\n>>> Processing Session: {session}, Mouse: {mouse}, Trail: {trial}")
 
                 raw_path = os.path.join(ctx.raw_root, ctx.dataset, session, mouse, trial)
                 info_path = os.path.join(raw_path, "info.txt")
@@ -50,7 +52,6 @@ try:
                 # --- Step 4: Affine atlas registration ---
                 Affine_Atlas(
                     processed_path=processed_folder,
-                    session=session,
                     mouse=mouse,
                     trial=trial,
                 )
@@ -58,12 +59,10 @@ try:
                 # --- Step 5: dRR ---
                 drr_narrow(
                     processed_path=processed_folder,
-                    session=session,
                     mouse=mouse,
                     trial=trial
                 )
 
                 pbar.update(1)
-                pbar.set_postfix({"Session": session, "Mouse": mouse, "Trial": trial})
 finally:
     pbar.close()

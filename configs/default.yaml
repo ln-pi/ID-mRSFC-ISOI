@@ -43,6 +43,12 @@ Edge:
   cross_only: False
   save_mat: True
 
+supplement:
+  statistics_file: "statistics.pkl"
+  structure_atlases: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED"], ["None"]]
+  structure_group_names: ["Association", "Sensory", "Whole Brain"]
+  exclude: ["AUDv"]
+
 # ---------- Visualization ----------
 visualization:
   defaults:
@@ -140,3 +146,26 @@ visualization:
     diff_ylabel: "Gradient"
     xlabel: "Trials"
     ylabel: "Value"
+
+  supplement_dd_box:
+    figsize: [5, 4]
+    ylabel: "DD"
+    title: "Diagonal Dominance (DD)"
+    show_legend: False
+    show_sub_label: True
+
+  supplement_nd_box:
+    figsize: [5, 4]
+    ylabel: "ND"
+    title: "Normalized Distance (ND)"
+    show_legend: False
+    show_sub_label: True
+
+  supplement_structure_space:
+    figsize: [6, 5]
+    xlabel: "DD"
+    ylabel: "ND"
+    title: "Structure Space"
+    s: 60
+    alpha: 0.9
+    legend: True

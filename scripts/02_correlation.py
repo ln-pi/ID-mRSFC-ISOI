@@ -28,6 +28,8 @@ try:
             df = pd.DataFrame(index=ctx.mice, columns=ctx.trials, dtype=object)
             for mouse in ctx.mice:
                 for trial in ctx.trials:
+                    pbar.set_postfix({"Atlas": atlas, "Session": session, "Mouse": mouse, "Trial": trial})
+                    logger.info(f"\n>>> Correlating Atlas: {atlas_tag}, Session: {session}, Mouse: {mouse}, Trail: {trial}")
 
                     series_path = os.path.join(ctx.processed_path, session, mouse, trial, f"{mouse}_{trial}_FiltDRR.npy")
                     save_folder = ctx.processed_dir("FC_Matrix")
@@ -49,7 +51,6 @@ try:
                     df.at[mouse, trial] = pd.DataFrame(FC, index=names, columns=names)
 
                     pbar.update(1)
-                    pbar.set_postfix(({"Atlas": atlas, "Session": session, "Mouse": mouse, "Trial": trial}))
 
                 logger.info(f"FC Matrix {mouse} in {session} saved.")
 

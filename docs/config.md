@@ -101,6 +101,21 @@ Edge:
 - `cross_only`: whether to keep only cross-module edges.
 - `save_mat`: whether to save matrix-style companion figures from circular graph outputs.
 
+## supplement
+
+```yaml
+supplement:
+  statistics_file: "statistics.pkl"
+  structure_atlases: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED"], ["None"]]
+  structure_group_names: ["Association", "Sensory", "Whole Brain"]
+  exclude: ["AUDv"]
+```
+
+- `statistics_file`: statistics DataFrame under `paths.output/<dataset>/`.
+- `structure_atlases`: atlas tags to compare in `05_supplement.py`.
+- `structure_group_names`: display names paired with `structure_atlases`.
+- `exclude`: statistic rows ignored before structure-space analysis.
+
 ## visualization
 
 ```yaml
@@ -136,6 +151,9 @@ Visualization presets keep plotting style out of the analysis scripts.
 - `stat_rel_effect_box`: extra options for relative-effect boxplots.
 - `stat_group_indiv_box`: extra options for group/individual boxplots.
 - `stat_mean_error`: group/individual trend-line style in statistics.
+- `supplement_dd_box`: DD boxplot style in supplementary analysis.
+- `supplement_nd_box`: ND boxplot style in supplementary analysis.
+- `supplement_structure_space`: DD-ND structure-space scatter style.
 
 Script-level presets are merged with plot-specific runtime values such as output names, labels, and data-dependent axis ticks.
 
