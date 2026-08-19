@@ -12,6 +12,9 @@ dependencies:
   - scipy
   - pandas
   - matplotlib
+  - pyyaml
+  - tqdm
+  - seaborn
   - scikit-learn
   - statsmodels
 

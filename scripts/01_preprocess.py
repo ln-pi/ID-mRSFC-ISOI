@@ -18,7 +18,7 @@ try:
         for mouse in ctx.mice:
             for trial in ctx.trials:
                 pbar.set_postfix({"Session": session, "Mouse": mouse, "Trial": trial})
-                logger.info(f"\n>>> Processing Session: {session}, Mouse: {mouse}, Trail: {trial}")
+                logger.info(f"\n>>> Processing Session: {session}, Mouse: {mouse}, Trial: {trial}")
 
                 raw_path = os.path.join(ctx.raw_root, ctx.dataset, session, mouse, trial)
                 info_path = os.path.join(raw_path, "info.txt")

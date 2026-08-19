@@ -106,7 +106,7 @@ data/processed/<dataset>/<session>/<mouse>/<trial>/<mouse>_<trial>_FiltDRR.npy
 and writes:
 
 ```text
-data/processed/<dataset>/FC_Matrix/<session>_<mouse>_<trial>_FC_Maticx_<atlas_tag>_excluded.npy
+data/processed/<dataset>/FC_Matrix/<session>_<mouse>_<trial>_FC_Matrix_<atlas_tag>_excluded.npy
 data/processed/<dataset>/<session>_correlation_matrices_<atlas_tag>_excluded.pkl
 data/output/<dataset>/FC_Matrix/<session>_<mouse>_<trial>_FC_Matrix_<atlas_tag>_excluded.png
 ```
@@ -123,7 +123,48 @@ data/output/<dataset>/
 
 Then run `04_statistics.py` to summarize `statistics.pkl`.
 
-## 7. Practical Notes
+## 7. Run Supplementary Structure Analysis
+
+`05_supplement.py` is optional and should be run after `03_identification.py` has produced:
+
+```text
+data/output/<dataset>/statistics.pkl
+```
+
+Run it in the main analysis environment:
+
+```bash
+conda activate ID-mRSFC-ISOI
+python scripts/05_supplement.py -c configs/default.yaml
+```
+
+The script builds a structure-space summary from the identification results:
+
+- DD: diagonal dominance of the subject similarity matrix.
+- ND: normalized distance to the diagonal.
+- RM-ANOVA: compares DD and ND across configured groups.
+- MANOVA: jointly compares DD and ND across configured groups.
+
+Before running, confirm these config fields:
+
+- `supplement.statistics_file`: statistics file name under `data/output/<dataset>/`.
+- `supplement.structure_atlases`: atlas conditions to include, using the same tags generated from `variables.Atlas`.
+- `supplement.structure_group_names`: display names paired one-to-one with `structure_atlases`.
+- `supplement.exclude`: rows to ignore, such as `AUDv`.
+- `visualization.supplement_dd_box`, `visualization.supplement_nd_box`, and `visualization.supplement_structure_space`: plot styles.
+
+Expected outputs are written under:
+
+```text
+data/output/<dataset>/Stat/
+|-- boxplot_DD.png
+|-- boxplot_ND.png
+`-- structure_space.png
+```
+
+Statistical tables are written to the active log file.
+
+## 8. Practical Notes
 
 - Run commands from the repository root.
 - Keep the exact config used for a run if you need reproducibility.

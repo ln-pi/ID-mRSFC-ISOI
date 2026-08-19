@@ -1,3 +1,9 @@
+"""Circular connectivity graph visualization.
+
+Adapted from the MATLAB circularGraph project:
+https://github.com/paul-kassebaum-mathworks/circularGraph
+"""
+
 import matplotlib.pyplot as plt
 import numpy as np
 

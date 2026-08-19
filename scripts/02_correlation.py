@@ -29,7 +29,7 @@ try:
             for mouse in ctx.mice:
                 for trial in ctx.trials:
                     pbar.set_postfix({"Atlas": atlas, "Session": session, "Mouse": mouse, "Trial": trial})
-                    logger.info(f"\n>>> Correlating Atlas: {atlas_tag}, Session: {session}, Mouse: {mouse}, Trail: {trial}")
+                    logger.info(f"\n>>> Correlating Atlas: {atlas_tag}, Session: {session}, Mouse: {mouse}, Trial: {trial}")
 
                     series_path = os.path.join(ctx.processed_path, session, mouse, trial, f"{mouse}_{trial}_FiltDRR.npy")
                     save_folder = ctx.processed_dir("FC_Matrix")
@@ -37,7 +37,7 @@ try:
                     matrix = np.load(series_path)
                     roi_time_series, names = extract_roi(matrix, atlas_exclude=atlas, mask_root=ctx.mask_root, mode="symmetric")
                     FC = np.corrcoef(roi_time_series.T)
-                    np.save(os.path.join(save_folder, f"{session}_{mouse}_{trial}_FC_Maticx_{atlas_tag}_excluded.npy"), FC)
+                    np.save(os.path.join(save_folder, f"{session}_{mouse}_{trial}_FC_Matrix_{atlas_tag}_excluded.npy"), FC)
 
                     save_fc_heatmap(
                         FC,
