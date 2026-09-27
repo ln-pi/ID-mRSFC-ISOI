@@ -9,6 +9,7 @@ from statsmodels.stats.anova import AnovaRM
 from statsmodels.stats.multitest import multipletests
 
 from srcs.utils.config import load_context
+from srcs.utils.results import save_table
 from srcs.vis.PlotSeries import PlotSeries
 
 
@@ -17,7 +18,7 @@ logger = ctx.logger
 render_options = ctx.render_options()
 mean_error_cfg = ctx.viz_style("stat_mean_error")
 
-stat_df_path = os.path.join(ctx.output_path, "statistics.pkl")
+stat_df_path = ctx.statistics_path
 with open(stat_df_path, "rb") as f:
     stat = pickle.load(f)
 
@@ -72,6 +73,7 @@ for atlas in ctx.atlases:
             })
     
     df_long = pd.DataFrame(rows)
+    save_table(os.path.join(ctx.output_dir("Stat", "Tables"), f"observations_{ind}.csv"), df_long, index=False)
 
     anova = AnovaRM(
         data=df_long,
@@ -81,6 +83,7 @@ for atlas in ctx.atlases:
     )
 
     result = anova.fit()
+    save_table(os.path.join(ctx.output_dir("Stat", "Tables"), f"anova_{ind}.csv"), result.anova_table)
 
     logger.info("==================== ANOVA RESULT ====================")
     logger.info(result)
@@ -93,6 +96,7 @@ for atlas in ctx.atlases:
         detailed=True
     )
 
+    save_table(os.path.join(ctx.output_dir("Stat", "Tables"), f"rm_anova_{ind}.csv"), aov, index=False)
     logger.info("==================== RM_ANOVA ====================")
     logger.info(aov)
 
@@ -149,6 +153,7 @@ for trial in stat.columns:
         results[i]["significant"] = reject[i]
     
     df_results = pd.DataFrame(results)
+    save_table(os.path.join(ctx.output_dir("Stat", "Tables"), f"posthoc_{trial}.csv"), df_results, index=False)
 
     logger.info("==================== Statistical Test Results ====================")
     logger.info(df_results)

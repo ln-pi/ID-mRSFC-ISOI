@@ -87,6 +87,26 @@ def should_exclude(name, exclude_list):
     
     return False
 
+def load_chamber_mask(mask_root, expected_shape=None):
+    """Load the shared chamber mask, allowing filename case differences."""
+    from PIL import Image
+    files = [
+        p for p in glob.glob(os.path.join(mask_root, "*"))
+        if os.path.basename(p).casefold() == "chamber_mask.png" and os.path.isfile(p)
+    ]
+    if len(files) != 1:
+        raise FileNotFoundError(f"Expected one Chamber_Mask.png in {mask_root}; found {len(files)}.")
+    with Image.open(files[0]) as image:
+        mask = np.asarray(image.convert("L")) > 0
+        if "A" in image.getbands():
+            mask &= np.asarray(image.getchannel("A")) > 0
+    if expected_shape is not None and mask.shape != tuple(expected_shape):
+        raise ValueError(f"Chamber mask shape {mask.shape} does not match data shape {tuple(expected_shape)}.")
+    if not mask.any():
+        raise ValueError("Chamber mask contains no valid pixels.")
+    return mask
+
+
 def extract_roi(matrix, mask_root, atlas_exclude=None, fmt="png", mode="interleaved"):
 
     if matrix.ndim != 3:
@@ -95,7 +115,12 @@ def extract_roi(matrix, mask_root, atlas_exclude=None, fmt="png", mode="interlea
     if mask_root is None:
         logger.raise_(IOError("FATAL: no mask_root provided!"))
     
-    mask_files = sorted(glob.glob(os.path.join(mask_root, f"*.{fmt}")))
+    mask_files = [
+        p for p in sorted(glob.glob(os.path.join(mask_root, f"*.{fmt}")))
+        if os.path.splitext(os.path.basename(p))[0].casefold() != "chamber_mask"
+    ]
+    if not mask_files:
+        raise FileNotFoundError(f"No ROI masks found in {mask_root} (excluding Chamber_Mask).")
 
     pairs = []
 
@@ -110,6 +135,8 @@ def extract_roi(matrix, mask_root, atlas_exclude=None, fmt="png", mode="interlea
         else:
             logger.raise_(ValueError(f"Unsupported format: {fmt}"))
         
+        if arr.shape != matrix.shape[1:]:
+            raise ValueError(f"ROI mask {file} shape {arr.shape} does not match data shape {matrix.shape[1:]}.")
         mask_L = arr > 0
         mask_R = np.fliplr(mask_L)
 
@@ -170,58 +197,89 @@ def average_matrices(m1, m2):
     z2 = fisher_z(extrack_matrix(m2))
     return (z1 + z2) / 2
 
-def build_half_dataframe(session_paths, trial_cnt=0, group_mode=14):
-    s1, s2, s3, s4 = [load_pkl(p) for p in session_paths]
+def split_session_indices(session_count, group_mode="sequential", repeat_session=None, seed=None):
+    """Return zero-based groups; repeat_session is a one-based position."""
+    if isinstance(session_count, bool) or not isinstance(session_count, (int, np.integer)) or session_count < 2:
+        raise ValueError("At least two sessions are required.")
+    if group_mode not in ("sequential", "random", 12, 13, 14):
+        raise ValueError("group_mode must be sequential, random, or legacy 12/13/14.")
+    if repeat_session is not None:
+        if group_mode != "sequential" or session_count % 2 == 0:
+            raise ValueError("repeat_session requires sequential mode and an odd session count.")
+        if isinstance(repeat_session, bool) or not isinstance(repeat_session, (int, np.integer)) or not 1 <= repeat_session <= session_count:
+            raise ValueError("repeat_session must be a one-based session position.")
+    if group_mode in (12, 13, 14):
+        if session_count != 4:
+            raise ValueError("Legacy 12/13/14 require four sessions; use sequential or random.")
+        return {12: ([0, 1], [2, 3]), 13: ([0, 2], [1, 3]), 14: ([0, 3], [1, 2])}[group_mode]
+    order = list(range(session_count))
+    if group_mode == "random":
+        order = np.random.default_rng(seed).permutation(session_count).tolist()
+    half = session_count // 2
+    if session_count % 2 == 0:
+        return order[:half], order[half:]
+    shared = order[half] if repeat_session is None else int(repeat_session) - 1
+    remaining = [i for i in order if i != shared]
+    first, second = remaining[:half] + [shared], [shared] + remaining[half:]
+    if group_mode == "sequential":
+        first.sort()
+        second.sort()
+    return first, second
 
-    # check index & columns
-    assert s1.index.equals(s2.index) and s1.index.equals(s3.index) and s1.index.equals(s4.index)
-    assert s1.columns.equals(s2.columns) and s1.columns.equals(s3.columns) and s1.columns.equals(s4.columns)
 
-    mouse_ids = s1.index
-    trials = s1.columns
+def build_half_dataframe(session_paths, trial_cnt=0, group_mode="sequential",
+                         repeat_session=None, seed=None, mouse_ids=None, trial_ids=None):
+    """Average Fisher-z matrices over equal session halves and selected trials.
 
-    if trial_cnt > 0 and trial_cnt <= len(trials):
-        trials = trials[:trial_cnt]
-    else:
-        logger.raise_(ValueError("Trial extracting out of range!"))
-    
-    df_out = pd.DataFrame(index=["1st", "2nd"], columns=mouse_ids, dtype=object)
-
-    for mouse in mouse_ids:
-
-        mats_1st = []
-        mats_2nd = []
-        roi_labels=None
-
-        for trial in trials:
-
-            m1 = s1.loc[mouse, trial]
-            m2 = s2.loc[mouse, trial]
-            m3 = s3.loc[mouse, trial]
-            m4 = s4.loc[mouse, trial]
-
-            if roi_labels is None:
-                if isinstance(m1, pd.DataFrame):
-                    roi_labels = m1.index.tolist()
-                else:
-                    roi_labels = list(range(extrack_matrix(m1).shape[0]))
-            
-            if group_mode == 12:
-                mats_1st.append(average_matrices(m1, m2))
-                mats_2nd.append(average_matrices(m3, m4))
-            elif group_mode == 13:
-                mats_1st.append(average_matrices(m1, m3))
-                mats_2nd.append(average_matrices(m2, m4))
-            elif group_mode == 14:
-                mats_1st.append(average_matrices(m1, m4))
-                mats_2nd.append(average_matrices(m2, m3))
-        
-        avg_1st = np.mean(np.stack(mats_1st), axis=0)
-        avg_2nd = np.mean(np.stack(mats_2nd), axis=0)
-
-        df_out.at["1st", mouse] = pd.DataFrame(avg_1st, index=roi_labels, columns=roi_labels)
-        df_out.at["2nd", mouse] = pd.DataFrame(avg_2nd, index=roi_labels, columns=roi_labels)
-
+    Input order defines session order. trial_cnt=0 uses all trials.
+    repeat_session is a one-based position for odd sequential splits.
+    Outputs remain in Fisher-z space, matching the original implementation.
+    """
+    session_paths = list(session_paths)
+    groups = split_session_indices(len(session_paths), group_mode, repeat_session, seed)
+    sessions = [load_pkl(p) for p in session_paths]
+    if not all(isinstance(frame, pd.DataFrame) for frame in sessions):
+        raise ValueError("Each session must contain a mouse-by-trial DataFrame.")
+    if mouse_ids is not None or trial_ids is not None:
+        sessions = [
+            frame.loc[mouse_ids if mouse_ids is not None else frame.index,
+                      trial_ids if trial_ids is not None else frame.columns]
+            for frame in sessions
+        ]
+    reference = sessions[0]
+    for frame in sessions:
+        if not frame.index.is_unique or not frame.columns.is_unique:
+            raise ValueError("Mouse and trial labels must be unique.")
+        if not reference.index.equals(frame.index) or not reference.columns.equals(frame.columns):
+            raise ValueError("All sessions must have identical mouse and trial labels in the same order.")
+    if reference.empty:
+        raise ValueError("Sessions must contain at least one mouse and one trial.")
+    if isinstance(trial_cnt, bool) or not isinstance(trial_cnt, (int, np.integer)) or not 0 <= trial_cnt <= len(reference.columns):
+        raise ValueError("trial_cnt must be between 0 (all trials) and the available trial count.")
+    trials = reference.columns[:trial_cnt] if trial_cnt else reference.columns
+    df_out = pd.DataFrame(index=["1st", "2nd"], columns=reference.index, dtype=object)
+    df_out.attrs["session_groups"] = {
+        name: [str(session_paths[i]) for i in indices]
+        for name, indices in zip(df_out.index, groups)
+    }
+    for mouse in reference.index:
+        first_cell = reference.loc[mouse, trials[0]]
+        shape = extrack_matrix(first_cell).shape
+        if len(shape) != 2 or shape[0] != shape[1]:
+            raise ValueError("Connectivity matrices must be square.")
+        labels = first_cell.index if isinstance(first_cell, pd.DataFrame) else pd.RangeIndex(shape[0])
+        for name, indices in zip(df_out.index, groups):
+            matrices = []
+            for i in indices:
+                for trial in trials:
+                    cell = sessions[i].loc[mouse, trial]
+                    matrix = extrack_matrix(cell)
+                    if matrix.shape != shape:
+                        raise ValueError("Connectivity matrices must have matching shapes.")
+                    if isinstance(cell, pd.DataFrame) and (not cell.index.equals(labels) or not cell.columns.equals(labels)):
+                        raise ValueError("Connectivity matrices must have matching ROI labels and order.")
+                    matrices.append(fisher_z(matrix))
+            df_out.at[name, mouse] = pd.DataFrame(np.mean(np.stack(matrices), axis=0), index=labels, columns=labels)
     return df_out
 
 

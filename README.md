@@ -41,8 +41,7 @@ ID-mRSFC-ISOI/
 |-- notebooks/               # Exploratory notebooks
 |-- scripts/                 # Numbered pipeline scripts
 |-- srcs/                    # Core Python modules
-|-- environment.yaml         # Main analysis environment
-|-- neuro_suite2p_env.yaml   # Preprocessing environment
+|-- tests/environment.yaml   # Unified Python 3.13.13 analysis + Suite2p environment
 |-- CITATION.cff
 |-- LICENSE
 `-- README.md
@@ -52,26 +51,25 @@ Generated data and logs are not version-controlled.
 
 ## Quick Start
 
-Create both environments:
+Create the unified environment:
 
 ```bash
-conda env create -f neuro_suite2p_env.yaml
-conda env create -f environment.yaml
+conda env create -f tests/environment.yaml
 ```
 
 Prepare your active config before running. `configs/default.yaml` is the recommended relative-path template; `configs/OIS.yaml` contains a lab-machine raw-data path example. See [docs/config.md](docs/config.md) for all fields.
 
-Run preprocessing in the Suite2p environment:
+Run preprocessing and analysis in the same environment:
 
 ```bash
-conda activate neuro_suite2p_env
+conda activate ID-mRSFC-ISOI_suite2p
 python scripts/01_preprocess.py -c configs/default.yaml
 ```
 
-Run downstream analysis in the main environment:
+Run downstream analysis in the same environment:
 
 ```bash
-conda activate ID-mRSFC-ISOI
+conda activate ID-mRSFC-ISOI_suite2p
 python scripts/02_correlation.py -c configs/default.yaml
 python scripts/03_identification.py -c configs/default.yaml
 python scripts/04_statistics.py -c configs/default.yaml
@@ -90,8 +88,6 @@ For required input layout, masks, interactive atlas alignment, expected outputs,
 Some implementation details are intentionally left unchanged for now:
 
 - `keepna=True` in raw binary frame reading may not preserve missing frames as NaN because adjusted frames are stored in an unsigned integer array.
-- Missing `Chamber_Mask.png` currently raises an indirect image-read error instead of a targeted file-not-found message.
-- `srcs/prep/suite2p.py` retains Suite2p registration keys `1Preg` and `phasecorr`; confirm these against the exact Suite2p runtime before changing registration behavior.
 - `srcs/atlas/Atlas_Mask.py::Get_Func_Mask()` appears to contain a non-main-path indexing issue and should be checked before using that helper directly.
 
 See [docs/workflow.md](docs/workflow.md) for runtime prerequisites and [docs/config.md](docs/config.md) for configuration details.

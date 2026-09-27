@@ -2,26 +2,46 @@
 
 This document summarizes the recommended workflow for lab members reusing this repository.
 
-## 1. Prepare Environments
+## 1. Prepare the Environment
 
-Use two conda environments:
+Use the unified Python 3.13.13 environment:
 
 ```bash
-conda env create -f neuro_suite2p_env.yaml
-conda env create -f environment.yaml
+conda env create -f tests/environment.yaml
 ```
 
-Use `neuro_suite2p_env` only for preprocessing:
+This merges both former environment files and pins Suite2p 1.1.0. OpenCV uses
+`opencv-python-headless` to share the same package as Cellpose; project interaction
+and the Suite2p GUI use PyQt6. Do not additionally install `opencv-python`, because
+both distributions write the same `cv2` files.
+
+Validation commands (from the repository root after activation):
 
 ```bash
-conda activate neuro_suite2p_env
+python -m pip check
+python tests/validate_environment.py
+python -m unittest discover -s tests -v
+python tests/smoke_suite2p.py
+```
+
+The smoke test uses temporary synthetic images, runs real CPU registration, and
+saves its report under `reports/environment_validation/`. Installed versions are
+recorded in `reports/environment_validation/requirements-lock.txt`; use this as a
+pip constraints file with the environment's declared requirements when reproducing
+the tested package set. NWB import/export is disabled and its optional `pynwb`
+dependency is not included.
+
+Use `ID-mRSFC-ISOI_suite2p` for preprocessing:
+
+```bash
+conda activate ID-mRSFC-ISOI_suite2p
 python scripts/01_preprocess.py -c configs/default.yaml
 ```
 
-Use `ID-mRSFC-ISOI` for downstream analysis:
+Use the same environment for downstream analysis:
 
 ```bash
-conda activate ID-mRSFC-ISOI
+conda activate ID-mRSFC-ISOI_suite2p
 python scripts/02_correlation.py -c configs/default.yaml
 python scripts/03_identification.py -c configs/default.yaml
 python scripts/04_statistics.py -c configs/default.yaml
@@ -32,7 +52,7 @@ python scripts/04_statistics.py -c configs/default.yaml
 Raw data should follow the config-defined layout:
 
 ```text
-<raw>/<dataset>/<session>/<mouse>/<trial>/
+<raw>/<dataset>/<trial>/<session>/<mouse>/
 |-- info.txt
 |-- img*.bin
 `-- ai*.bin
@@ -41,14 +61,16 @@ Raw data should follow the config-defined layout:
 With `configs/default.yaml`, this means:
 
 ```text
-data/raw/WT/Session1/A01/Trial1/
+data/raw/WT/Trial1/Session1/A01/
 ```
 
-With `configs/OIS.yaml`, this means:
+With `configs/OIS.yaml` (`dataset: ""`, trials `00w` through `10w`), this means:
 
 ```text
-F:/OIS_Awake_Mice/WT/Run01/41#/Trial1/
+F:/OIS_Awake_Mice/00w/Run01/A01/
 ```
+
+Only the raw input layout uses `trial/session/mouse`. Generated per-recording outputs use `session/mouse/trial`, as expected by the correlation stage.
 
 ## 3. Prepare Masks
 
@@ -56,15 +78,17 @@ ROI masks are loaded from `paths.mask`, usually `data/mask/`.
 
 Each mask should be a PNG image where nonzero pixels define one unilateral ROI. The code mirrors each mask left/right when `extract_roi(..., mode="symmetric")` is used.
 
-Each processed trial folder must also contain:
+The shared chamber mask is stored alongside the ROI masks:
 
 ```text
-Chamber_Mask.png
+data/mask/Chamber_Mask.png
 ```
 
-before `drr_narrow()` can run.
+Filename case differences (e.g. `Chamber_mask.png`) are accepted. It is used for all recordings and excluded from ROI extraction. Its dimensions must match the aligned frames. All datasets using the same `paths.mask` share this mask.
 
 ## 4. Run Preprocessing
+
+Suite2p writes directly under each processed recording folder as `suite2p/plane0/reg_tif/`. It receives an explicit input file list containing only `<mouse>_<trial>.tif`, so re-running does not include `_merged.tif`. Existing outputs in the old `OIS_Corrected` directory are not migrated or deleted.
 
 Preprocessing performs:
 
@@ -78,6 +102,7 @@ Expected output per trial:
 
 ```text
 data/processed/<dataset>/<session>/<mouse>/<trial>/
+|-- suite2p/                 # registration outputs for this session/mouse/trial
 |-- <mouse>_<trial>.tif
 |-- <mouse>_<trial>_merged.tif
 |-- <mouse>_<trial>_Affine.npy
@@ -134,7 +159,7 @@ data/output/<dataset>/statistics.pkl
 Run it in the main analysis environment:
 
 ```bash
-conda activate ID-mRSFC-ISOI
+conda activate ID-mRSFC-ISOI_suite2p
 python scripts/05_supplement.py -c configs/default.yaml
 ```
 
@@ -170,3 +195,13 @@ Statistical tables are written to the active log file.
 - Keep the exact config used for a run if you need reproducibility.
 - Preprocessing can require substantial disk space because Suite2p writes binary and registered TIFF outputs.
 - Do not commit generated files under `data/processed`, `data/output`, `data/raw`, or `logs`.
+
+
+## Cumulative analysis and preprocessing resume
+
+The current pipeline defaults to random session grouping with a reproducible seed.
+All analysis output now lives under a seed/mode/configuration-specific directory inside `paths.output`; paths shown earlier in this document describe filenames and stage contracts, with this additional directory inserted before the dataset.
+
+03 saves separate `1Trial/`, `2Trial/`, ... results. 1Trial has valid identification results but no within-session split-half Edge estimate; its Edge result records this explicitly. Edge estimates at N>=2 use only the first N configured trials.
+
+01 resumes at the first incomplete or changed step, validates its new outputs, then reruns dependent downstream steps. A complete step 4 is skipped without opening the interactive alignment UI. Details and limitations are in [config.md](config.md#analysis-output-and-resume).

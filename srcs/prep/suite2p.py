@@ -1,6 +1,10 @@
 import os
+import hashlib
+from importlib.metadata import version, PackageNotFoundError
+from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 from srcs.utils.logger import setup_logger
 
@@ -8,7 +12,20 @@ from srcs.utils.logger import setup_logger
 logger = setup_logger()
 
 
+def suite2p_runtime_signature():
+    """Invalidate registration checkpoints after package or adapter changes."""
+    try:
+        release = version("suite2p")
+    except PackageNotFoundError:
+        release = "not-installed"
+    return {"suite2p_version": release,
+            "adapter_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest()}
+
+
 def run_isolated_process(tiff_file, mouse, trial, save_path):
+    """Run one TIFF; save_path is the complete session/mouse/trial directory."""
+    tiff_file = os.path.abspath(tiff_file)
+    save_path = os.path.abspath(save_path)
     script_content = f'''
 import os
 import numpy as np
@@ -25,10 +42,7 @@ if not np.isfinite(sample_frame).all() or sample_frame.sum() == 0:
 
 settings = default_settings()
 settings.update({{
-    "Ly": sample_frame.shape[0],
-    "Lx": sample_frame.shape[1],
     "fs": 30.0,
-    "diameter": 10,
     "torch_device": "cpu",
 }})
 settings["run"].update({{
@@ -50,12 +64,11 @@ settings["registration"].update({{
     "nonrigid": False,
     "block_size": [128, 128],
     "nimg_init": min(500, nframes),
-    "1Preg": True,
+    "batch_size": 500,
     "maxregshift": 0.1,
     "maxregshiftNR": 5,
     "smooth_sigma": 1.15,
     "subpixel": 10,
-    "phasecorr": True,
     "snr_thresh": 1.2,
     "reg_tif": True,
     "reg_tif_chan2": False,
@@ -69,13 +82,15 @@ settings["extraction"].update({{
 
 db = {{
     "data_path": [os.path.dirname(r"{tiff_file}")],
-    "save_path0": r"{os.path.join(save_path, mouse, trial)}",
+    "save_path0": {save_path!r},
+    "file_list": [{os.path.basename(tiff_file)!r}],
+    "look_one_level_down": False,
     "save_folder": "suite2p",
     "input_format": "tif",
     "nplanes": 1,
     "nchannels": 1,
     "functional_chan": 1,
-    "keep_movie_raw": False,
+    "keep_movie_raw": True,
 }}
 
 run_s2p(db, settings)
@@ -106,8 +121,9 @@ if not os.path.isdir(reg_tif_dir) or not any(name.lower().endswith((".tif", ".ti
 print(f"finished: {mouse}_{trial}")
 '''
 
-    temp_script = f"temp_suite2p_{mouse}_{trial}.py"
-    with open(temp_script, "w", encoding="utf-8") as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", prefix="ois_suite2p_",
+                                     encoding="utf-8", delete=False) as f:
+        temp_script = f.name
         f.write(script_content)
 
     try:

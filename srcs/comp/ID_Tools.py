@@ -134,7 +134,8 @@ class Identify(object):
         matrices, ind, cols, labels = df_to_array(corrMat)
 
         matrices =matrices.squeeze()
-        matrices, _ = self.remove_nan(matrices)
+        matrices, kept = self.remove_nan(matrices)
+        labels = [labels[i] for i in kept]
 
         sim_mat, Indiv, Group, relEffect, cohen_d = self.Calc_NetworkSimilarity(matrices[0], matrices[1])
 
@@ -196,17 +197,18 @@ class Identify(object):
             "pearson_p_value": p_r
         }
     
-    def shuffle(self, iter=1000, figsize=(5, 4), dpi=180, save_path=None, show=True, log=False, tag="shuffle", plot_config=None):
+    def shuffle(self, iter=1000, figsize=(5, 4), dpi=180, save_path=None, show=True, log=False, tag="shuffle", plot_config=None, seed=None):
         plot_config = dict(plot_config or {})
         figsize = tuple(plot_config.pop("figsize", figsize))
         dpi = plot_config.pop("dpi", dpi)
         atlas_tag = "_".join(self.atlas)
         acc, r_acc, c_acc = [], [], []
+        rng = np.random.default_rng(seed)
         real_acc, real_r_acc, real_c_acc = self.Calc_IdentificationAccuracy(self.sim_mat)
 
         for _ in tqdm(range(iter), total=iter, desc="Shuffle", leave=False):
             shuffled = self.df.copy()
-            shuffled_mouse = np.random.permutation(self.df.columns)
+            shuffled_mouse = rng.permutation(self.df.columns)
             shuffled.loc["2nd"] = self.df.loc["2nd", shuffled_mouse].values
 
             tmp = Identify(shuffled, atlas_exclude=self.atlas)
@@ -343,13 +345,19 @@ class Edgewise_Contribution(object):
 
     name = "Quantifying edgewise contribution to identification"
 
-    def __init__(self, path, mouse_ids, sessions, seed=None, atlas_exclude=None):
+    def __init__(self, path, mouse_ids, sessions, seed=None, atlas_exclude=None,
+                 trial_cnt=0, trial_ids=None):
         self.path = path
         self.mouse_ids = mouse_ids
         self.sessions = sessions
         self.rng = np.random.default_rng(seed)
         self.atlas = atlas_exclude
 
+        if isinstance(trial_cnt, bool) or not isinstance(trial_cnt, int) or trial_cnt < 0:
+            raise ValueError("trial_cnt must be a nonnegative integer.")
+        self.trial_cnt = trial_cnt
+        self.trial_ids = trial_ids
+        self.roi_labels = None
         self.data = {}
         self._load_data()
     
@@ -365,6 +373,12 @@ class Edgewise_Contribution(object):
 
             df = pd.read_pickle(file_path)
 
+            trials = list(self.trial_ids) if self.trial_ids is not None else list(df.columns)
+            if self.trial_cnt > len(trials):
+                raise ValueError("trial_cnt exceeds available trials.")
+            trials = trials[:self.trial_cnt] if self.trial_cnt else trials
+            if any(trial not in df.columns for trial in trials):
+                raise ValueError(f"Requested trials missing in {session}.")
             self.data[session] = {}
 
             for mouse in tqdm(self.mouse_ids, desc="Mice", position=1, leave=False):
@@ -375,7 +389,7 @@ class Edgewise_Contribution(object):
 
                 mats = []
 
-                for trial in tqdm(df.columns, desc="Trials", position=2, leave=False):
+                for trial in tqdm(trials, desc="Trials", position=2, leave=False):
 
                     cell = df.loc[mouse, trial]
 
@@ -392,7 +406,12 @@ class Edgewise_Contribution(object):
                     if mat is None:
                         continue
 
-                    mats.append(mat)
+                    labels = mat.index.tolist() if isinstance(mat, pd.DataFrame) else list(range(np.asarray(mat).shape[0]))
+                    if self.roi_labels is None:
+                        self.roi_labels = labels
+                    elif labels != self.roi_labels:
+                        raise ValueError("Edge matrices must have matching ROI labels.")
+                    mats.append(np.asarray(mat))
                 
                 if len(mats) == 0:
                     logger.warning(f"No valid matrices for {mouse} in {session}")
@@ -492,6 +511,8 @@ class Edgewise_Contribution(object):
     
     def run(self, repeat=1):
 
+        if repeat < 1:
+            raise ValueError("repeat must be >= 1.")
         Phi_all, DP_all = [], []
 
         for r in range(repeat):

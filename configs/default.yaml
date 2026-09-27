@@ -20,6 +20,7 @@ variables:
 # ---------- Preprocess ----------
 preprocess:
   keepna: False
+  resume: True  # validate completed step outputs before skipping
   bin:
     time: 6
     space: 4
@@ -30,8 +31,13 @@ preprocess:
   robust: 2
 
 # ---------- Analysis ----------
+analysis:
+  statistics_file: "statistics.pkl"  # shared by 03, 04 and 05
+
 ID:
-  group_mode: 14
+  group_mode: random  # sequential or random
+  repeat_session: null  # odd sequential split: session ID or one-based position
+  session_seed: 42  # reproducible random session split
   shuffle: True
   n_iter: 1000
 
@@ -44,7 +50,6 @@ Edge:
   save_mat: True
 
 supplement:
-  statistics_file: "statistics.pkl"
   structure_atlases: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED"], ["None"]]
   structure_group_names: ["Association", "Sensory", "Whole Brain"]
   exclude: ["AUDv"]

@@ -8,18 +8,19 @@ paths:
   processed: "data\\processed\\"
   output: "data\\output\\"
   mask: "data\\mask\\"
-  log: "logs\\default.log"
+  log: "logs\\OIS.log"
 
 variables:
-  dataset: "WT"
-  Session_ids: ["Run01", "Run02", "Run03"]
-  Mouse_ids: ["41#", "42#", "43#", "44#", "45#", "46#", "47#", "48#", "49#", "50#"]
-  Trial_ids: ["Trial1"]
+  dataset: ""
+  Session_ids: ["Run01", "Run02"]
+  Mouse_ids: ["A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A09", "A10"]
+  Trial_ids: ["00w", "01w", "02w", "03w", "04w", "05w", "06w", "07w", "08w", "09w", "10w"]
   Atlas: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED"], ["None"], ["AUDv"]]
 
 # ---------- Preprocess ----------
 preprocess:
   keepna: False
+  resume: True  # validate completed step outputs before skipping
   bin:
     time: 6
     space: 4
@@ -30,8 +31,13 @@ preprocess:
   robust: 2
 
 # ---------- Analysis ----------
+analysis:
+  statistics_file: "statistics.pkl"  # shared by 03, 04 and 05
+
 ID:
-  group_mode: 14
+  group_mode: random  # sequential or random
+  repeat_session: null  # odd sequential split: session ID or one-based position
+  session_seed: 42  # reproducible random session split
   shuffle: True
   n_iter: 1000
 
@@ -44,7 +50,6 @@ Edge:
   save_mat: True
 
 supplement:
-  statistics_file: "statistics.pkl"
   structure_atlases: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED"], ["None"]]
   structure_group_names: ["Association", "Sensory", "Whole Brain"]
   exclude: ["AUDv"]

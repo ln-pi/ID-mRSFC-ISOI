@@ -105,11 +105,11 @@ class Match_Pattern(Mask_Generator):
                     y, x = int(event.ydata), int(event.xdata)
                     self.anchor.append([y, x])
 
-                    if len(self.anchor) == 1:
+                    if len(self.anchor) <= 1:
                         logger.info("Selecting Bregma...")
-                    elif len(self.anchor) == 2:
+                    elif len(self.anchor) < 2:
                         logger.info("Selecting Lambda...")
-                    elif len(self.anchor) == 3:
+                    elif len(self.anchor) < 3:
                         logger.info("Selecting other anchor points (3 points in total)...")
 
                     redraw()

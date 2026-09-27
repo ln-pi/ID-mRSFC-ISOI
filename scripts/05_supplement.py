@@ -8,6 +8,7 @@ from statsmodels.multivariate.manova import MANOVA
 from statsmodels.stats.anova import AnovaRM
 
 from srcs.utils.config import load_context
+from srcs.utils.results import save_pickle, save_table
 from srcs.vis.PlotSeries import PlotSeries
 
 
@@ -149,8 +150,7 @@ def main():
     supplement_cfg = ctx.section("supplement")
     render_options = ctx.render_options()
 
-    stat_file = supplement_cfg.get("statistics_file", "statistics.pkl")
-    stat_df_path = os.path.join(ctx.output_path, stat_file)
+    stat_df_path = ctx.statistics_path
     with open(stat_df_path, "rb") as f:
         stat = pickle.load(f)
 
@@ -166,7 +166,14 @@ def main():
 
     DD, ND = build_structure_inputs(stat, group_atlases, exclude=exclude)
     analyzer = StructureAnalyzer(DD, ND, group_names=group_names, logger=logger)
-    analyzer.summary()
+    summaries = analyzer.summary()
+    table_path = ctx.output_dir("Stat", "Tables", "Supplement")
+    save_table(os.path.join(table_path, "observations.csv"), analyzer.df_rm, index=False)
+    save_table(os.path.join(table_path, "rm_anova_dd.csv"), summaries["RM-ANOVA DD"].anova_table)
+    save_table(os.path.join(table_path, "rm_anova_nd.csv"), summaries["RM-ANOVA ND"].anova_table)
+    save_pickle(os.path.join(table_path, "manova.pkl"), summaries["MANOVA"].results)
+    for term, result in summaries["MANOVA"].results.items():
+        save_table(os.path.join(table_path, f"manova_{term}.csv"), result["stat"])
 
     save_path = ctx.output_dir("Stat")
 

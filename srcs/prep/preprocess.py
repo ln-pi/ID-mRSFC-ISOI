@@ -8,7 +8,7 @@ import tifffile
 from scipy import signal
 
 from srcs.utils.logger import setup_logger
-from srcs.utils.utils import normalize_data
+from srcs.utils.utils import normalize_data, load_chamber_mask
 from srcs.io.readers import Info_Reader, Graph_Reader_All
 from srcs.comp.Align_Tools import Match_Pattern
 from srcs.comp.Filters import Filter_2D
@@ -139,9 +139,9 @@ def Affine_Atlas(processed_path, mouse, trial):
     cv2.imwrite(os.path.join(processed_path, f"{mouse}_{trial}_Average_After.png"), transformed_stacks.mean(0).astype("u2"))
 
 
-def drr_narrow(processed_path, mouse, trial):
+def drr_narrow(processed_path, mouse, trial, mask_root=os.path.join("data", "mask")):
     affine_data = np.load(os.path.join(processed_path, f"{mouse}_{trial}_Affine.npy"))
-    chambermask = cv2.imread(os.path.join(processed_path, "Chamber_Mask.png"), 0) > 0
+    chambermask = load_chamber_mask(mask_root, expected_shape=affine_data.shape[1:])
     mask_data = affine_data * chambermask
 
     drr = np.nan_to_num((mask_data - mask_data.mean(0)) / mask_data.mean(0))
