@@ -1,5 +1,7 @@
 import numpy as np
 import os
+import json
+from pathlib import Path
 import pandas as pd
 
 from srcs.utils.config import load_context
@@ -16,8 +18,72 @@ warnings.filterwarnings(
 )
 
 
+def select_complete_mice(ctx):
+    """Fixed complete cohort across all configured sessions/trials/atlases."""
+    reports = list((Path(ctx.output_path) / "BatchReports").glob("02_correlation_*.json"))
+    if not reports:
+        raise FileNotFoundError("03 requires a 02_correlation_*.json BatchReport in the current configuration directory")
+    report_path = max(reports, key=lambda p: (p.stat().st_mtime_ns, p.name))
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    tags = ["_".join(a) for a in ctx.atlases]
+    expected = {(s, m, t, a) for s in ctx.sessions for m in ctx.mice
+                for t in ctx.trials for a in tags}
+    records = {}
+    for row in report["records"]:
+        key = tuple(row[k] for k in ("session", "mouse", "trial", "atlas"))
+        if key in records:
+            raise ValueError(f"Duplicate record in BatchReport: {key}")
+        records[key] = row
+    if set(records) != expected:
+        raise ValueError(f"Latest 02 BatchReport is incomplete or has a different scope: {report_path}; "
+                         f"missing={len(expected-set(records))}, extra={len(set(records)-expected)}")
+    reasons = {mouse: [] for mouse in ctx.mice}
+    tables = []
+    for atlas in tags:
+        reference = None
+        for session in ctx.sessions:
+            path = Path(ctx.correlation_path) / f"{session}_correlation_matrices_{atlas}_excluded.pkl"
+            frame = pd.read_pickle(path)
+            if not isinstance(frame, pd.DataFrame) or not frame.index.is_unique or not frame.columns.is_unique:
+                raise ValueError(f"Invalid aggregate table: {path}")
+            tables.append(str(path))
+            for mouse in ctx.mice:
+                for trial in ctx.trials:
+                    row = records[(session, mouse, trial, atlas)]
+                    issues = []
+                    if row["status"] not in ("success", "reused"):
+                        issues.append(f"report {row['status']}: {row.get('reason', '')}")
+                    cell = frame.at[mouse, trial] if mouse in frame.index and trial in frame.columns else None
+                    if not isinstance(cell, pd.DataFrame):
+                        issues.append("missing matrix in PKL")
+                    else:
+                        from srcs.comp.correlation import valid_fc
+                        names = list(cell.index)
+                        if not valid_fc(cell, names):
+                            issues.append("invalid matrix in PKL")
+                        elif reference is None:
+                            reference = names
+                        elif names != reference:
+                            issues.append("inconsistent ROI labels/order")
+                    if issues:
+                        reasons[mouse].append({"session": session, "trial": trial, "atlas": atlas,
+                                               "reasons": issues})
+    kept = [m for m in ctx.mice if not reasons[m]]
+    audit = {"policy": "fixed_complete_mice_across_full_analysis", "batch_report": str(report_path),
+             "tables": tables, "configured_mice": list(ctx.mice), "retained_mice": kept,
+             "excluded_mice": {m: r for m, r in reasons.items() if r},
+             "sessions": list(ctx.sessions), "trials": list(ctx.trials), "atlases": tags}
+    return kept, audit
+
+
 ctx = load_context()
 logger = ctx.logger
+analysis_mice, cohort_audit = select_complete_mice(ctx)
+save_json(os.path.join(ctx.output_dir("Identification"), "cohort_selection.json"), cohort_audit)
+logger.info("Fixed complete mouse cohort: retained=%s; excluded=%s", analysis_mice,
+            list(cohort_audit["excluded_mice"]))
+if len(analysis_mice) < 2:
+    raise ValueError("Fewer than two complete mice remain; see Identification/cohort_selection.json")
 id_cfg = ctx.section("ID")
 edge_cfg = ctx.section("Edge")
 session_seed = ctx.session_seed
@@ -36,6 +102,8 @@ df = pd.DataFrame(
     columns=[f"{n}Trial" for n in range(1, len(ctx.trials) + 1)],
 )
 
+df.attrs["cohort_selection"] = cohort_audit
+
 for trial_cnt in range(len(ctx.trials)):
     data = [[], []]
     relE = []
@@ -44,7 +112,7 @@ for trial_cnt in range(len(ctx.trials)):
     trial_cnt += 1
     tag = f"{trial_cnt}Trial"
     summary_rows = []
-    trial_path = ctx.output_dir(tag)
+    trial_path = ctx.output_dir("Identification", tag)
 
     for atlas in ctx.atlases:
         label = "_".join(atlas)
@@ -52,7 +120,7 @@ for trial_cnt in range(len(ctx.trials)):
         logger.info(f"\n>>> {tag} Atlas {label} excluded:")
 
         session_paths = [
-            os.path.join(ctx.processed_path, f"{session}_correlation_matrices_{label}_excluded.pkl")
+            os.path.join(ctx.correlation_path, f"{session}_correlation_matrices_{label}_excluded.pkl")
             for session in ctx.sessions
         ]
         missing_paths = [path for path in session_paths if not os.path.exists(path)]
@@ -65,7 +133,7 @@ for trial_cnt in range(len(ctx.trials)):
         df_out = build_half_dataframe(
             session_paths, trial_cnt, ctx.group_mode,
             repeat_session=repeat_session, seed=session_seed,
-            mouse_ids=ctx.mice, trial_ids=ctx.trials,
+            mouse_ids=analysis_mice, trial_ids=ctx.trials,
         )
         logger.info(f"Session groups: {df_out.attrs['session_groups']}")
 
@@ -80,14 +148,14 @@ for trial_cnt in range(len(ctx.trials)):
                 iter=id_cfg["n_iter"],
                 seed=session_seed,
                 tag=tag,
-                save_path=ctx.output_dir(tag, "Similarity"),
+                save_path=ctx.output_dir("Identification", tag, "Similarity"),
                 show=render_options["show"],
                 log=render_options["log"],
                 plot_config=ctx.viz_style("id_shuffle_hist"),
             )
 
         ID.output(
-            save_path=ctx.output_dir(tag, "Similarity"),
+            save_path=ctx.output_dir("Identification", tag, "Similarity"),
             dpi=ctx.figure_dpi(),
             tag=tag,
             show=render_options["show"],
@@ -96,18 +164,18 @@ for trial_cnt in range(len(ctx.trials)):
             matrix_config=ctx.viz_style("id_similarity_matrix"),
         )
 
-        numeric_path = ctx.output_dir(tag, "Numeric")
+        numeric_path = ctx.output_dir("Identification", tag, "Numeric")
         save_pickle(os.path.join(numeric_path, f"identification_{label}.pkl"), {
             "similarity": sim_mat, "group": Group, "individual": Indiv,
             "relative_effect": relEft, "cohen_d": cohen_d, "statistics": stat,
-            "mice": ctx.mice, "roi_labels": info[2],
+            "mice": analysis_mice, "roi_labels": info[2],
             "trial_ids": ctx.trials[:trial_cnt], "session_groups": ctx.session_groups,
         })
         save_table(os.path.join(numeric_path, f"similarity_{label}.csv"),
-                   pd.DataFrame(sim_mat, index=ctx.mice, columns=ctx.mice))
+                   pd.DataFrame(sim_mat, index=analysis_mice, columns=analysis_mice))
         save_table(os.path.join(numeric_path, f"subjects_{label}.csv"),
                    pd.DataFrame({"group": Group, "individual": Indiv, "relative_effect": relEft},
-                                index=pd.Index(ctx.mice, name="mouse")))
+                                index=pd.Index(analysis_mice, name="mouse")))
         save_json(os.path.join(numeric_path, f"statistics_{label}.json"), {**stat, "cohen_d": cohen_d})
         summary_rows.append({"atlas": label, "trial_count": trial_cnt, **stat, "cohen_d": cohen_d})
         if shuffle_result is not None:
@@ -121,8 +189,8 @@ for trial_cnt in range(len(ctx.trials)):
         df.at["_".join(atlas), tag] = [Group, Indiv, relEft, stat, cohen_d]
 
         EC = Edgewise_Contribution(
-            path=ctx.processed_path,
-            mouse_ids=ctx.mice,
+            path=ctx.correlation_path,
+            mouse_ids=analysis_mice,
             sessions=ctx.sessions,
             seed=edge_cfg["seed"],
             atlas_exclude=atlas,
@@ -131,10 +199,10 @@ for trial_cnt in range(len(ctx.trials)):
 
         Phi, DP = EC.run(repeat=edge_cfg["repeat"])
 
-        save_path = ctx.output_dir(tag, "EdgeContri")
+        save_path = ctx.output_dir("Identification", tag, "EdgeContri")
 
         save_pickle(os.path.join(save_path, f"edges_{label}_{tag}.pkl"), {
-            "Phi": Phi, "DP": DP, "roi_labels": EC.roi_labels,
+            "Phi": Phi, "DP": DP, "roi_labels": EC.roi_labels, "mice": analysis_mice,
             "trial_ids": ctx.trials[:trial_cnt],
             "status": "complete" if Phi and DP else "unavailable",
             "reason": None if Phi and DP else "At least two valid trials and two mice per session are required.",
@@ -184,19 +252,19 @@ for trial_cnt in range(len(ctx.trials)):
         # labels
         if label == "SM_VIS_AUD":
             label = "Association"
-        elif label == "PF_LAT_MED":
-            label = "Sensory"
+        elif label in ("PF_LAT_MED", "PF_LAT_MED_AUDv"):
+            label = "Sensory excluding AUDv" if "AUDv" in label else "Sensory"
         elif label == "None":
             label = "Whole Brain"
         elif label == "AUDv":
-            label = "AUDv excluded"
+            label = "Whole Brain excluding AUDv"
         labels.append(label)
     
     rel_box_cfg = dict(rel_box_preset)
     rel_box = PlotSeries(
         figsize=tuple(rel_box_cfg.pop("figsize", (4, 4))),
         dpi=rel_box_cfg.pop("dpi", ctx.figure_dpi()),
-        save_path=ctx.output_dir(tag, "Stat"),
+        save_path=ctx.output_dir("Identification", tag, "Stat"),
     )
     rel_box.box(
         relE,
@@ -209,7 +277,7 @@ for trial_cnt in range(len(ctx.trials)):
     group_indiv_box = PlotSeries(
         figsize=tuple(group_indiv_box_cfg.pop("figsize", (4, 4))),
         dpi=group_indiv_box_cfg.pop("dpi", ctx.figure_dpi()),
-        save_path=ctx.output_dir(tag, "Stat"),
+        save_path=ctx.output_dir("Identification", tag, "Stat"),
     )
     group_indiv_box.box(
         data,

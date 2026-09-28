@@ -39,7 +39,7 @@ for atlas in ctx.atlases:
     PlotSeries(
         figsize=tuple(plot_cfg.pop("figsize", (8, 6))),
         dpi=plot_cfg.pop("dpi", ctx.figure_dpi()),
-        save_path=ctx.output_dir("Stat"),
+        save_path=ctx.output_dir("Statistics"),
     ).mean_error(
         data=(group, indiv),
         name=f"Line_Group-Indiv_{ind}_gradient",
@@ -73,7 +73,7 @@ for atlas in ctx.atlases:
             })
     
     df_long = pd.DataFrame(rows)
-    save_table(os.path.join(ctx.output_dir("Stat", "Tables"), f"observations_{ind}.csv"), df_long, index=False)
+    save_table(os.path.join(ctx.output_dir("Statistics", "Tables"), f"observations_{ind}.csv"), df_long, index=False)
 
     anova = AnovaRM(
         data=df_long,
@@ -83,7 +83,7 @@ for atlas in ctx.atlases:
     )
 
     result = anova.fit()
-    save_table(os.path.join(ctx.output_dir("Stat", "Tables"), f"anova_{ind}.csv"), result.anova_table)
+    save_table(os.path.join(ctx.output_dir("Statistics", "Tables"), f"anova_{ind}.csv"), result.anova_table)
 
     logger.info("==================== ANOVA RESULT ====================")
     logger.info(result)
@@ -96,7 +96,7 @@ for atlas in ctx.atlases:
         detailed=True
     )
 
-    save_table(os.path.join(ctx.output_dir("Stat", "Tables"), f"rm_anova_{ind}.csv"), aov, index=False)
+    save_table(os.path.join(ctx.output_dir("Statistics", "Tables"), f"rm_anova_{ind}.csv"), aov, index=False)
     logger.info("==================== RM_ANOVA ====================")
     logger.info(aov)
 
@@ -105,7 +105,7 @@ for trial in stat.columns:
 
     logger.info(f"\n>>> Current Trial: {trial}")
 
-    exclude = "AUDv"
+    exclude = set(ctx.section("analysis").get("statistics_exclude", []))
     systems = [s for s in stat.index.tolist() if s not in exclude]
 
     data_dict = {}
@@ -153,7 +153,7 @@ for trial in stat.columns:
         results[i]["significant"] = reject[i]
     
     df_results = pd.DataFrame(results)
-    save_table(os.path.join(ctx.output_dir("Stat", "Tables"), f"posthoc_{trial}.csv"), df_results, index=False)
+    save_table(os.path.join(ctx.output_dir("Statistics", "Tables"), f"posthoc_{trial}.csv"), df_results, index=False)
 
     logger.info("==================== Statistical Test Results ====================")
     logger.info(df_results)

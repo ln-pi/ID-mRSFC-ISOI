@@ -131,9 +131,9 @@ data/processed/<dataset>/<session>/<mouse>/<trial>/<mouse>_<trial>_FiltDRR.npy
 and writes:
 
 ```text
-data/processed/<dataset>/FC_Matrix/<session>_<mouse>_<trial>_FC_Matrix_<atlas_tag>_excluded.npy
-data/processed/<dataset>/<session>_correlation_matrices_<atlas_tag>_excluded.pkl
-data/output/<dataset>/FC_Matrix/<session>_<mouse>_<trial>_FC_Matrix_<atlas_tag>_excluded.png
+data/output/<analysis_tag>/<dataset>/Correlation/FC_Matrix/<session>_<mouse>_<trial>_FC_Matrix_<atlas_tag>_excluded.npy
+data/output/<analysis_tag>/<dataset>/Correlation/<session>_correlation_matrices_<atlas_tag>_excluded.pkl
+data/output/<analysis_tag>/<dataset>/Correlation/Figures/<session>_<mouse>_<trial>_FC_Matrix_<atlas_tag>_excluded.png
 ```
 
 ## 6. Run Identification and Statistics
@@ -153,7 +153,7 @@ Then run `04_statistics.py` to summarize `statistics.pkl`.
 `05_supplement.py` is optional and should be run after `03_identification.py` has produced:
 
 ```text
-data/output/<dataset>/statistics.pkl
+data/output/<analysis_tag>/<dataset>/Identification/statistics.pkl
 ```
 
 Run it in the main analysis environment:
@@ -181,7 +181,7 @@ Before running, confirm these config fields:
 Expected outputs are written under:
 
 ```text
-data/output/<dataset>/Stat/
+data/output/<analysis_tag>/<dataset>/Statistics/
 |-- boxplot_DD.png
 |-- boxplot_ND.png
 `-- structure_space.png
@@ -205,3 +205,47 @@ All analysis output now lives under a seed/mode/configuration-specific directory
 03 saves separate `1Trial/`, `2Trial/`, ... results. 1Trial has valid identification results but no within-session split-half Edge estimate; its Edge result records this explicitly. Edge estimates at N>=2 use only the first N configured trials.
 
 01 resumes at the first incomplete or changed step, validates its new outputs, then reruns dependent downstream steps. A complete step 4 is skipped without opening the interactive alignment UI. Details and limitations are in [config.md](config.md#analysis-output-and-resume).
+
+## Missing inputs in stages 01 and 02
+
+Stages 01 and 02 log missing inputs and per-record failures, then continue with
+later records. Each run writes a unique `BatchReports/<stage>_<timestamp>_<id>.json`
+under the configured analysis output directory, updating it after each record.
+The report includes success/missing/failed counts, session, mouse, trial, input
+path, and error reason (also atlas for stage 02). Stage 01 success includes records
+whose complete outputs were reused by the existing resume mechanism.
+
+Stage 02 saves each session/atlas table with `None` in missing or failed cells;
+its `complete` attribute indicates whether every configured cell succeeded.
+Non-finite FC matrices count as failures. Existing individual output files from
+older runs are not deleted; the current table and batch report determine validity.
+Stages 03–05 have not been changed to accept incomplete tables. Inspect and resolve
+missing records before continuing downstream. Global setup or summary-write errors
+still stop the run; user interruption is not swallowed.
+
+## Stage output directories
+
+All stages share the same configuration-specific root:
+
+```text
+output/<analysis_tag>/<dataset>/
+  Correlation/
+    FC_Matrix/                 # 02 numerical arrays and validated caches
+    Figures/                   # 02 heatmaps and plot checkpoints
+    <session>_correlation_matrices_<atlas>_excluded.pkl
+  Identification/
+    statistics.pkl             # 03 aggregate; filename configured by analysis.statistics_file
+    1Trial/                    # 03 per-trial numeric results, figures and Edge analysis
+    2Trial/
+    ...
+  Statistics/                  # shared 04 and 05 figures
+    Tables/                    # 04 statistical tables
+      Supplement/              # 05 statistical tables
+  BatchReports/
+  analysis_config.json
+```
+
+04 and 05 read the aggregate from Identification, then write to Statistics.
+Existing files in the former output locations are not automatically moved or read.
+02 numerical caches remain in Correlation/FC_Matrix; missing Figures are regenerated
+from valid caches without repeating numerical computation.

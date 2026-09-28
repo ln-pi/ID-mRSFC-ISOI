@@ -4,6 +4,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from srcs.utils.config import load_context
+from srcs.utils.batch import BatchReport
 from srcs.utils.utils import load_chamber_mask
 from srcs.prep.preprocess import Bin2Tiff, Affine_Atlas, merge_tiffs, drr_narrow
 from srcs.prep.suite2p import run_isolated_process, suite2p_runtime_signature
@@ -74,6 +75,7 @@ def process_recording(ctx, session, mouse, trial):
 
 def main():
     ctx = load_context()
+    report = BatchReport(ctx, "01_preprocess")
     total = len(ctx.sessions) * len(ctx.mice) * len(ctx.trials)
     with tqdm(total=total, desc="Processing", leave=False) as pbar:
         for session in ctx.sessions:
@@ -81,8 +83,11 @@ def main():
                 for trial in ctx.trials:
                     pbar.set_postfix({"Session": session, "Mouse": mouse, "Trial": trial})
                     ctx.logger.info(f">>> Processing Session: {session}, Mouse: {mouse}, Trial: {trial}")
-                    process_recording(ctx, session, mouse, trial)
+                    report.run(lambda: process_recording(ctx, session, mouse, trial),
+                        session=session, mouse=mouse, trial=trial,
+                        input_path=os.path.join(ctx.raw_root, ctx.dataset, trial, session, mouse))
                     pbar.update(1)
+    report.finish()
 
 
 if __name__ == "__main__":

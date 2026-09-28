@@ -99,17 +99,14 @@ class RunContext:
         edge_seed = self.section("Edge").get("seed", 42)
         if isinstance(edge_seed, bool) or not isinstance(edge_seed, int) or edge_seed < 0:
             raise ValueError("Edge.seed must be a nonnegative integer for reproducible analysis.")
-        identity = {
-            "variables": self.variables,
-            "raw": self.raw_root,
-            "processed": self.processed_root,
-            "groups": self.session_groups,
-            "ID": self.section("ID"),
-            "Edge": self.section("Edge"),
-        }
+        identity = self.config  # Deterministic isolation by the complete parsed configuration.
         digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:10]
         repeat = f"_repeat{self.repeat_session}" if self.repeat_session is not None else ""
         return f"seed_{self.group_mode}_{self.session_seed}{repeat}_edge{edge_seed}_{digest}"
+
+    @property
+    def correlation_path(self):
+        return os.path.join(self.output_path, "Correlation")
 
     @property
     def statistics_file(self):
@@ -122,7 +119,7 @@ class RunContext:
 
     @property
     def statistics_path(self):
-        return os.path.join(self.output_path, self.statistics_file)
+        return os.path.join(self.output_path, "Identification", self.statistics_file)
 
     def save_analysis_metadata(self):
         from srcs.utils.results import save_json

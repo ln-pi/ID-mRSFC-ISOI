@@ -15,7 +15,7 @@ variables:
   Session_ids: ["Session1", "Session2", "Session3", "Session4"]
   Mouse_ids: ["A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A09", "A10"]
   Trial_ids: ["Trial1", "Trial2", "Trial3", "Trial4", "Trial5", "Trial6", "Trial7"]
-  Atlas: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED"], ["None"], ["AUDv"]]
+  Atlas: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED", "AUDv"], ["AUDv"]]
 
 # ---------- Preprocess ----------
 preprocess:
@@ -29,6 +29,10 @@ preprocess:
     lopass: 1
     fps: 5
   robust: 2
+
+# ---------- Correlation ----------
+correlation:
+  resume: True
 
 # ---------- Analysis ----------
 analysis:
@@ -50,9 +54,9 @@ Edge:
   save_mat: True
 
 supplement:
-  structure_atlases: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED"], ["None"]]
-  structure_group_names: ["Association", "Sensory", "Whole Brain"]
-  exclude: ["AUDv"]
+  structure_atlases: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED", "AUDv"], ["AUDv"]]
+  structure_group_names: ["Association", "Sensory excluding AUDv", "Whole Brain excluding AUDv"]
+  exclude: []
 
 # ---------- Visualization ----------
 visualization:

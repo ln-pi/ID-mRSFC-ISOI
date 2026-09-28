@@ -156,18 +156,18 @@ def main():
 
     group_atlases = supplement_cfg.get(
         "structure_atlases",
-        [atlas for atlas in ctx.atlases if _atlas_tag(atlas) != "AUDv"],
+        ctx.atlases,
     )
     group_names = supplement_cfg.get(
         "structure_group_names",
         [_atlas_tag(atlas) for atlas in group_atlases],
     )
-    exclude = supplement_cfg.get("exclude", ["AUDv"])
+    exclude = supplement_cfg.get("exclude", [])
 
     DD, ND = build_structure_inputs(stat, group_atlases, exclude=exclude)
     analyzer = StructureAnalyzer(DD, ND, group_names=group_names, logger=logger)
     summaries = analyzer.summary()
-    table_path = ctx.output_dir("Stat", "Tables", "Supplement")
+    table_path = ctx.output_dir("Statistics", "Tables", "Supplement")
     save_table(os.path.join(table_path, "observations.csv"), analyzer.df_rm, index=False)
     save_table(os.path.join(table_path, "rm_anova_dd.csv"), summaries["RM-ANOVA DD"].anova_table)
     save_table(os.path.join(table_path, "rm_anova_nd.csv"), summaries["RM-ANOVA ND"].anova_table)
@@ -175,7 +175,7 @@ def main():
     for term, result in summaries["MANOVA"].results.items():
         save_table(os.path.join(table_path, f"manova_{term}.csv"), result["stat"])
 
-    save_path = ctx.output_dir("Stat")
+    save_path = ctx.output_dir("Statistics")
 
     dd_box_cfg = ctx.viz_style("stat_box", "supplement_dd_box")
     nd_box_cfg = ctx.viz_style("stat_box", "supplement_nd_box")

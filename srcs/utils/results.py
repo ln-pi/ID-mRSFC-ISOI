@@ -3,22 +3,36 @@ import json
 import os
 import pickle
 import tempfile
+import time
+import logging
 
 import numpy as np
 
 
 def _atomic(path, writer, binary=False):
-    folder = os.path.dirname(os.fspath(path)) or "."
+    path = os.path.abspath(os.fspath(path))
+    folder = os.path.dirname(path)
     os.makedirs(folder, exist_ok=True)
     handle = tempfile.NamedTemporaryFile(mode="wb" if binary else "w",
         dir=folder, delete=False, **({} if binary else {"encoding": "utf-8"}))
     try:
         with handle:
             writer(handle)
-        os.replace(handle.name, path)
+        for attempt in range(6):
+            try:
+                os.replace(handle.name, path)
+                break
+            except PermissionError:
+                if attempt == 5:
+                    raise
+                time.sleep(0.05 * (2 ** attempt))
     finally:
         if os.path.exists(handle.name):
-            os.unlink(handle.name)
+            try:
+                os.unlink(handle.name)
+            except OSError:
+                logging.getLogger("project_logger").warning(
+                    "Could not remove temporary output file: %s", handle.name)
 
 
 def _json_value(value):

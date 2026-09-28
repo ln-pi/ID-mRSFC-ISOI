@@ -31,7 +31,7 @@ variables:
   Session_ids: ["Session1", "Session2", "Session3", "Session4"]
   Mouse_ids: ["A01", "A02"]
   Trial_ids: ["Trial1", "Trial2"]
-  Atlas: [["SM", "VIS", "AUD"], ["None"]]
+  Atlas: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED", "AUDv"], ["AUDv"]]
 ```
 
 - `dataset`: dataset/group name used under `processed` and `output`.
@@ -43,7 +43,7 @@ variables:
 Examples:
 
 - `["SM", "VIS", "AUD"]` excludes ROI names containing `SM`, `VIS`, or `AUD`.
-- `["None"]` is used as the "whole brain" condition in current plotting labels.
+- `["None"]` remains a legacy no-exclusion label; the shipped configs use `["AUDv"]` for whole brain excluding bilateral AUDv.
 - `["AUDv"]` excludes ROI names containing `AUDv`.
 
 ## preprocess
@@ -116,9 +116,9 @@ This section controls `scripts/05_supplement.py`. The script is optional and use
 
 ```yaml
 supplement:
-  structure_atlases: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED"], ["None"]]
-  structure_group_names: ["Association", "Sensory", "Whole Brain"]
-  exclude: ["AUDv"]
+  structure_atlases: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED", "AUDv"], ["AUDv"]]
+  structure_group_names: ["Association", "Sensory excluding AUDv", "Whole Brain excluding AUDv"]
+  exclude: []
 ```
 
 - `analysis.statistics_file`: shared statistics filename for 03, 04 and 05 (see below); the old supplement-only setting is a fallback for older configurations.
@@ -131,7 +131,7 @@ supplement:
 - `diagonal_dominance`: reported as DD.
 - `normalized_distance_to_diagonal`: reported as ND.
 
-It writes DD/ND boxplots and a DD-ND structure-space plot under `paths.output/<dataset>/Stat/`, and logs RM-ANOVA and MANOVA tables to `paths.log`.
+It writes DD/ND boxplots and a DD-ND structure-space plot under `paths.output/<analysis_tag>/<dataset>/Statistics/`, and logs RM-ANOVA and MANOVA tables to `paths.log`.
 
 ## visualization
 
@@ -206,14 +206,60 @@ Edge:
 ```
 
 Output layout is `<paths.output>/seed_<mode>_<session_seed>[_repeatN]_edge<edge_seed>_<configuration-hash>/<dataset>/`.
-The short hash distinguishes session/data selections and ID/Edge settings. Relative paths remain relative to the launch directory. Repeating the same configuration reuses the same analysis directory. `analysis_config.json` records the configuration, actual session groups and trial order. `analysis.statistics_file` is a filename (not an absolute path); older supplement-only configurations remain supported.
+The short hash is calculated from the complete parsed configuration, including session/data selections, ID/Edge settings, paths and visualization settings. Relative paths remain relative to the launch directory. Repeating the same configuration reuses the same analysis directory. `analysis_config.json` records the configuration, actual session groups and trial order. `analysis.statistics_file` is a filename (not an absolute path); older supplement-only configurations remain supported.
 
-03 uses the configured mouse IDs and trial order when selecting pickle entries. Each `NTrial/` directory contains identification results for the first N trials, numerical similarity/subject/statistics exports, full shuffle results, edge contributions and a one-column copy of the shared statistics pickle. A combined pickle at the analysis root serves 04/05. Edge keeps the original within-session trial split: 1Trial is explicitly unavailable; N>=2 uses only the first N trials.
+03 uses the configured mouse IDs and trial order when selecting pickle entries. Each `NTrial/` directory contains identification results for the first N trials, numerical similarity/subject/statistics exports, full shuffle results, edge contributions and a one-column copy of the shared statistics pickle. A combined pickle in Identification/ serves 04/05. Edge keeps the original within-session trial split: 1Trial is explicitly unavailable; N>=2 uses only the first N trials.
 
-04 exports ANOVA, repeated-measures ANOVA, observations and FDR-corrected post-hoc CSV tables under `Stat/Tables/`. 05 exports input observations, ANOVA tables and MANOVA tables/numerical results under `Stat/Tables/Supplement/`. Edge CSV matrices and session-wise Phi/DP pickle results are saved in addition to graph images.
+04 exports ANOVA, repeated-measures ANOVA, observations and FDR-corrected post-hoc CSV tables under `Statistics/Tables/`. 05 exports input observations, ANOVA tables and MANOVA tables/numerical results under `Statistics/Tables/Supplement/`. Edge CSV matrices and session-wise Phi/DP pickle results are saved in addition to graph images.
 
 With `preprocess.resume: True`, 01 validates each step's outputs before skipping it. It checks TIFF byte ranges and frame dimensions/counts, NPY structure/size, preview readability and dependencies. Step 4 skips both manual selection and transformation when its NPY and preview are complete. A running/complete JSON marker per step prevents interrupted runs being mistaken for completed runs. Changed upstream files cause dependent steps to rerun; changing the chamber mask reruns step 5. Older outputs without markers are adopted after structural validation and dependency timestamp checks. These checks detect incomplete files, not arbitrary numerical corruption; legacy output provenance cannot be reconstructed.
 
 Set `resume: False` to rerun all five steps. Before rerunning Suite2p, an existing recording-local `suite2p/` directory is renamed to `suite2p.previous-<timestamp>/` to preserve it and avoid merging stale TIFF chunks. The legacy global `OIS_Corrected` directory is neither migrated nor deleted.
 
 Suite2p checkpoints include the installed Suite2p version and the adapter source hash. A change to either reruns registration and downstream steps; complete legacy outputs without checkpoint metadata are still adopted after structural validation.
+
+## Stage 02 configuration-isolated result reuse
+
+`correlation.resume: True` reuses only validated per-record caches in the current
+configuration directory. The directory suffix is the deterministic hash of the
+complete parsed YAML configuration (not a run timestamp or random value).
+
+- Source: `processed/<dataset>/<session>/<mouse>/<trial>/*_FiltDRR.npy`.
+- FC caches and arrays: `output/<analysis_tag>/<dataset>/Correlation/FC_Matrix/`.
+- Session tables: `output/<analysis_tag>/<dataset>/Correlation/*_excluded.pkl`.
+- Stage 03 reads both identification and Edge inputs only from this Correlation directory.
+- Stages 04–05 read the aggregate in Identification/ and save their results in Statistics/.
+
+Changing any configuration value selects another directory. Repeating the same
+configuration reuses verified results; changed source metadata, masks, or algorithm
+invalidates numerical caches. No legacy adoption or shared-directory fallback is
+performed. Old outputs are left untouched but are not used automatically. The first
+run under this new full-configuration hash therefore recomputes FC. `resume: False`
+forces computation. Missing files and failures remain reported separately.
+
+## Stage output directories
+
+All stages share the same configuration-specific root:
+
+```text
+output/<analysis_tag>/<dataset>/
+  Correlation/
+    FC_Matrix/                 # 02 numerical arrays and validated caches
+    Figures/                   # 02 heatmaps and plot checkpoints
+    <session>_correlation_matrices_<atlas>_excluded.pkl
+  Identification/
+    statistics.pkl             # 03 aggregate; filename configured by analysis.statistics_file
+    1Trial/                    # 03 per-trial numeric results, figures and Edge analysis
+    2Trial/
+    ...
+  Statistics/                  # shared 04 and 05 figures
+    Tables/                    # 04 statistical tables
+      Supplement/              # 05 statistical tables
+  BatchReports/
+  analysis_config.json
+```
+
+04 and 05 read the aggregate from Identification, then write to Statistics.
+Existing files in the former output locations are not automatically moved or read.
+02 numerical caches remain in Correlation/FC_Matrix; missing Figures are regenerated
+from valid caches without repeating numerical computation.

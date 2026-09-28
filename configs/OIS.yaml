@@ -5,7 +5,7 @@
 # ---------- Info ----------
 paths:
   raw: "F:\\OIS_Awake_Mice\\"
-  processed: "data\\processed\\"
+  processed: "D:\\data\\"
   output: "data\\output\\"
   mask: "data\\mask\\"
   log: "logs\\OIS.log"
@@ -14,8 +14,8 @@ variables:
   dataset: ""
   Session_ids: ["Run01", "Run02"]
   Mouse_ids: ["A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A09", "A10"]
-  Trial_ids: ["00w", "01w", "02w", "03w", "04w", "05w", "06w", "07w", "08w", "09w", "10w"]
-  Atlas: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED"], ["None"], ["AUDv"]]
+  Trial_ids: ["00w", "01w", "02w", "03w", "04w", "05w", "06w", "07w", "08w", "09w", "10w", "11w", "12w", "13w"]
+  Atlas: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED", "AUDv"], ["AUDv"]]
 
 # ---------- Preprocess ----------
 preprocess:
@@ -29,6 +29,10 @@ preprocess:
     lopass: 1
     fps: 5
   robust: 2
+
+# ---------- Correlation ----------
+correlation:
+  resume: True
 
 # ---------- Analysis ----------
 analysis:
@@ -50,9 +54,9 @@ Edge:
   save_mat: True
 
 supplement:
-  structure_atlases: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED"], ["None"]]
-  structure_group_names: ["Association", "Sensory", "Whole Brain"]
-  exclude: ["AUDv"]
+  structure_atlases: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED", "AUDv"], ["AUDv"]]
+  structure_group_names: ["Association", "Sensory excluding AUDv", "Whole Brain excluding AUDv"]
+  exclude: []
 
 # ---------- Visualization ----------
 visualization:
