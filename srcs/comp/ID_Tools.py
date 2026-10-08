@@ -346,7 +346,7 @@ class Edgewise_Contribution(object):
     name = "Quantifying edgewise contribution to identification"
 
     def __init__(self, path, mouse_ids, sessions, seed=None, atlas_exclude=None,
-                 trial_cnt=0, trial_ids=None):
+                 trial_cnt=0, trial_ids=None, frames=None, group_indices=None):
         self.path = path
         self.mouse_ids = mouse_ids
         self.sessions = sessions
@@ -359,6 +359,8 @@ class Edgewise_Contribution(object):
         self.trial_ids = trial_ids
         self.roi_labels = None
         self.data = {}
+        self.frames = frames
+        self.group_indices = group_indices
         self._load_data()
     
     def _load_data(self):
@@ -367,11 +369,13 @@ class Edgewise_Contribution(object):
         for session in tqdm(self.sessions, desc="Sessions", position=0, leave=False):
             
             file_path = os.path.join(self.path, f"{session}_correlation_matrices_{atlas_tag}_excluded.pkl")
-            if not os.path.exists(file_path):
-                logger.warning(f"No file for session: {session}")
-                continue
-
-            df = pd.read_pickle(file_path)
+            if self.frames is not None:
+                df = self.frames[session]
+            else:
+                if not os.path.exists(file_path):
+                    logger.warning(f"No file for session: {session}")
+                    continue
+                df = pd.read_pickle(file_path)
 
             trials = list(self.trial_ids) if self.trial_ids is not None else list(df.columns)
             if self.trial_cnt > len(trials):
@@ -428,6 +432,9 @@ class Edgewise_Contribution(object):
     def _split_trials(self, mats):
 
         T = mats.shape[0]
+        if self.group_indices is not None:
+            first, second = self.group_indices
+            return np.mean(mats[first], axis=0), np.mean(mats[second], axis=0)
         idx = self.rng.permutation(T)
 
         half = T // 2
@@ -511,8 +518,11 @@ class Edgewise_Contribution(object):
     
     def run(self, repeat=1):
 
-        if repeat < 1:
-            raise ValueError("repeat must be >= 1.")
+        if isinstance(repeat, bool) or not isinstance(repeat, int) or repeat < 1:
+            raise ValueError("Edge.repeat must be a positive integer")
+        # Shared groups are fixed; repeating identical pairs adds no information.
+        if self.group_indices is not None:
+            return self.compute_phi_dp(self.build_pairs())
         Phi_all, DP_all = [], []
 
         for r in range(repeat):

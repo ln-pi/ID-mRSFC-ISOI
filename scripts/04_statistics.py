@@ -9,7 +9,8 @@ from statsmodels.stats.anova import AnovaRM
 from statsmodels.stats.multitest import multipletests
 
 from srcs.utils.config import load_context
-from srcs.utils.results import save_table
+from srcs.utils.results import save_table, save_json
+from srcs.utils.dataset import statistics_metadata
 from srcs.vis.PlotSeries import PlotSeries
 
 
@@ -21,6 +22,10 @@ mean_error_cfg = ctx.viz_style("stat_mean_error")
 stat_df_path = ctx.statistics_path
 with open(stat_df_path, "rb") as f:
     stat = pickle.load(f)
+analysis_meta = statistics_metadata(ctx, stat)
+condition_axis = "week" if analysis_meta["split_axis"] == "run" else "run"
+within = ["condition", condition_axis] if len(stat.columns) > 1 else ["condition"]
+save_json(os.path.join(ctx.output_dir("Statistics"), "analysis_metadata.json"), analysis_meta)
 
 # Plot Group-Indiv-Diff curve
 for atlas in ctx.atlases:
@@ -36,6 +41,8 @@ for atlas in ctx.atlases:
 
     plot_cfg = dict(mean_error_cfg)
     plot_cfg["title"] = title[0]
+    plot_cfg["xlabel"] = ("Cumulative " if analysis_meta["selection_mode"] == "cumulative" else "") + condition_axis.capitalize()
+    plot_cfg["xticklabels"] = list(stat.columns)
     PlotSeries(
         figsize=tuple(plot_cfg.pop("figsize", (8, 6))),
         dpi=plot_cfg.pop("dpi", ctx.figure_dpi()),
@@ -57,18 +64,19 @@ for atlas in ctx.atlases:
         n_mouse = len(indiv) if len(indiv) == len(group) else min(len(indiv), len(group))
 
         for mouse in range(n_mouse):
+            mouse_id = analysis_meta["mice"][mouse]
 
             rows.append({
-                "mouse": mouse,
+                "mouse": mouse_id,
                 "condition": "Indiv",
-                "trial": str(trial),
+                condition_axis: str(trial),
                 "similarity": indiv[mouse],
             })
 
             rows.append({
-                "mouse": mouse,
+                "mouse": mouse_id,
                 "condition": "Group",
-                "trial": str(trial),
+                condition_axis: str(trial),
                 "similarity": group[mouse]
             })
     
@@ -79,7 +87,7 @@ for atlas in ctx.atlases:
         data=df_long,
         depvar="similarity",
         subject="mouse",
-        within=["condition", "trial"]
+        within=within
     )
 
     result = anova.fit()
@@ -91,7 +99,7 @@ for atlas in ctx.atlases:
     aov = pg.rm_anova(
         data=df_long,
         dv="similarity",
-        within=["condition", "trial"],
+        within=within,
         subject="mouse",
         detailed=True
     )

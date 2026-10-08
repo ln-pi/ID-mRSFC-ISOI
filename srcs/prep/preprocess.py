@@ -139,7 +139,7 @@ def Affine_Atlas(processed_path, mouse, trial):
     cv2.imwrite(os.path.join(processed_path, f"{mouse}_{trial}_Average_After.png"), transformed_stacks.mean(0).astype("u2"))
 
 
-def drr_narrow(processed_path, mouse, trial, mask_root=os.path.join("data", "mask")):
+def drr_narrow(processed_path, mouse, trial, week, mask_root=os.path.join("data", "mask")):
     affine_data = np.load(os.path.join(processed_path, f"{mouse}_{trial}_Affine.npy"))
     chambermask = load_chamber_mask(mask_root, expected_shape=affine_data.shape[1:])
     mask_data = affine_data * chambermask
@@ -166,4 +166,4 @@ def drr_narrow(processed_path, mouse, trial, mask_root=os.path.join("data", "mas
     step = int(30 / 5)
     data_ds = signal.decimate(filt_data, step, axis=0, zero_phase=True)
 
-    np.save(os.path.join(processed_path, f"{mouse}_{trial}_FiltDRR.npy"), data_ds)
+    np.save(os.path.join(processed_path, f"{mouse}_{trial}_{week}_FiltDRR.npy"), data_ds)

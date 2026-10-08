@@ -1,137 +1,160 @@
 # Configuration Reference
 
-Scripts read `configs/OIS.yaml` by default. Pass another config with `-c` or `--config`:
+Run scripts from the repository root with `-c configs/OIS.yaml` or another config.
+Relative paths remain relative to the launch directory.
 
-```bash
-python scripts/01_preprocess.py -c configs/default.yaml
-```
-
-## paths
-
-```yaml
-paths:
-  raw: "data\\raw\\"
-  processed: "data\\processed\\"
-  output: "data\\output\\"
-  mask: "data\\mask\\"
-  log: "logs\\default.log"
-```
-
-- `raw`: root folder containing raw OIS data, read from `<raw>/<dataset>/<trial>/<session>/<mouse>/`. Each mouse folder contains `info.txt` and the recording binary files.
-- `processed`: root folder for intermediate outputs.
-- `output`: root folder for figures, statistics, and final outputs.
-- `mask`: shared folder containing ROI PNGs and `Chamber_Mask.png` (filename case differences accepted). The chamber mask is used for every recording and excluded from ROI extraction. Mask dimensions must match the aligned images.
-- `log`: runtime log path.
-
-## variables
+## Physical recording dimensions
 
 ```yaml
 variables:
-  dataset: "WT"
-  Session_ids: ["Session1", "Session2", "Session3", "Session4"]
-  Mouse_ids: ["A01", "A02"]
-  Trial_ids: ["Trial1", "Trial2"]
+  dataset: ""
+  Week_ids: ["00w", "01w", "02w"]
+  Mouse_ids: ["N01", "N02"]
+  Run_ids: ["Run01", "Run02"]
   Atlas: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED", "AUDv"], ["AUDv"]]
 ```
 
-- `dataset`: dataset/group name used under `processed` and `output`.
-- `Session_ids`: sessions to process and analyze. `03_identification.py` loads pkl files in this exact order.
-- `Mouse_ids`: mice to process and analyze.
-- `Trial_ids`: trials to process and analyze.
-- `Atlas`: ROI exclusion sets. Each inner list is converted to an atlas tag with underscores.
+Weeks and runs always describe acquisition identities, independently of analysis.
+All ID lists must be nonempty and unique. Order defines chronological week order
+and cumulative run order; no lexical sorting is substituted. The former
+Session_ids/Trial_ids keys must be replaced with explicit physical Week_ids/Run_ids;
+old arbitrary session/trial names cannot be safely interpreted automatically.
 
-Examples:
+`paths` contains raw, processed, output, mask and log roots. The dataset is appended
+to raw/processed and output roots. All datasets may share `data/mask/`, including
+Chamber_Mask.png and ROI PNGs. The chamber mask is excluded from ROI extraction.
+Atlas lists are ROI exclusions, not inclusions.
 
-- `["SM", "VIS", "AUD"]` excludes ROI names containing `SM`, `VIS`, or `AUD`.
-- `["None"]` remains a legacy no-exclusion label; the shipped configs use `["AUDv"]` for whole brain excluding bilateral AUDv.
-- `["AUDv"]` excludes ROI names containing `AUDv`.
+## Input paths and preprocessing
 
-## preprocess
+01 and 02 search the configured week/mouse/run IDs across all six permutations
+of those three directory levels, including week/run/mouse raw folders and
+run/mouse/week or week/mouse/run processed folders. No data directory is renamed.
+02 only accepts `<mouse>_<run>_<week>_FiltDRR.npy` (for example N01_Run01_00w_FiltDRR.npy).
+01 step 5 writes the same name. Former filenames are ignored.
+Multiple matching files for one recording are an error; duplicate sources are
+never silently selected. Missing/conflicting/corrupt records are logged and
+recorded in BatchReports while remaining records continue.
 
-```yaml
-preprocess:
-  keepna: False
-  bin:
-    time: 6
-    space: 4
-  filter:
-    highpass: 0.005
-    lopass: 1
-    fps: 5
-  robust: 2
-```
+01 creates new outputs at processed/<dataset>/<week>/<mouse>/<run>/, or resumes
+the single existing recording folder when present. Suite2p stays inside that
+folder. Raw folders require info.txt and img*.bin. Finish copying before running
+02, so incomplete files are not treated as valid input.
 
-- `keepna`: whether missing/zero frames should remain as missing values. Use `False` for the current preprocessing workflow.
-- `bin`: reserved for binning-related parameters.
-- `filter`: intended filtering parameters. The current `Filter_2D()` implementation uses fixed band-pass values internally.
-- `robust`: reserved for robust-processing settings.
-
-## ID
+## Common analysis options
 
 ```yaml
+analysis:
+  split_axis: run          # run or week
+  selection_mode: single  # single or cumulative, on the opposite axis
+  statistics_file: "statistics.pkl"
 ID:
+  completeness_mode: strict
   group_mode: random
-  repeat_session: null
+  repeat_id: null
   session_seed: 42
   shuffle: True
   n_iter: 1000
 ```
 
-- `group_mode`: session grouping in `build_half_dataframe()`; any session count >= 2 is supported by the new modes.
-  - `sequential`: split in `Session_ids` order. With five sessions, groups are `[1, 2, 3]` and `[3, 4, 5]`.
-  - `random` (default in pipeline configs): shuffle session order once, then split equally. For odd counts, the middle session in the shuffled order is shared by both groups.
-  - Legacy numeric `12`, `13`, `14` retain their original pairings for exactly four sessions only.
-- `repeat_session`: optional session ID (e.g. `"Session2"`) or **one-based position** in `Session_ids`. Only valid for odd session counts in `sequential` mode. The selected session is shared; remaining sessions are split in original order. With five sessions and `repeat_session: 2`, groups are `[1, 2, 3]` and `[2, 4, 5]`. `null` shares the middle session. Direct Python calls accept the one-based position only.
-- `session_seed`: nonnegative integer (default 42), shared by reproducible session grouping and permutation testing. The same config resolves to the same output directory in scripts 02–05. Null is rejected to avoid unrelated seeds between independently launched stages. `Edge.seed` independently controls within-session trial splitting.
+| split_axis | selection_mode | Comparison | Output conditions |
+|---|---|---|---|
+| run | single | Two run groups within each week | 00w, 01w, ... |
+| run | cumulative | Two run groups after averaging first N weeks | 1Week, 2Week, ... |
+| week | single | Two week groups using each run separately | Run01, Run02, ... |
+| week | cumulative | Two week groups after averaging first N runs | 1Run, 2Run, ... |
 
-Each half averages Fisher-z-transformed matrices equally across included sessions and trials, preserving the previous output scale. `trial_cnt=0` in direct Python calls now means all trials. The shared session contributes to both halves, so odd-session halves overlap by design.
+ID first averages Fisher-z FC matrices within each half and selected opposite-axis
+samples, then identifies mice. A split axis needs at least two entries.
+`group_mode` is random (seeded permutation) or sequential (configured order).
+Even counts split equally; odd counts share the middle entry by default.
+`repeat_id` accepts an ID or one-based position on the *selected* split axis,
+only for odd sequential splits. The seed retains its existing name session_seed
+for continuity. Shared entries appear explicitly in the metadata.
 
-Mouse and trial counts are not fixed at 10 and 7. All session pickle tables must contain identical mouse/trial labels in the same order and compatible ROI matrices. Change `Mouse_ids` and `Trial_ids` and regenerate correlation files when changing the dataset; identification reads the mice and trial order from those files. The averaging helper supports one or more mice/trials, but individual-vs-group comparison needs multiple mice, the current Lilliefors statistics step needs at least four mice, and edge contribution requires at least two valid trials per mouse/session and two valid mice. Statistical estimation may impose further sample-size or non-degeneracy requirements.
+Strict retains all configured weeks and runs, excluding any mouse with any invalid
+record across that entire range and all atlases. Cover enumerates continuous
+intervals in configured Week_ids order, retaining mice complete across all runs
+and atlases, and maximizes mice count times week count. At least two complete mice
+are required; ties prefer more mice then the earlier start. The same selected
+mice and weeks are used throughout ID, shuffle, Edge and statistics. If a selected
+week split has fewer than two weeks, 03 stops rather than inventing another group.
+Missing whole week/atlas PKLs or incomplete latest 02 reports stop 03 explicitly.
 
-- `shuffle`: whether to run permutation testing in `03_identification.py`.
-- `n_iter`: number of shuffle/permutation iterations.
+Identification/cohort_selection.json records candidates, scores, exclusions and
+all actual condition selections. The aggregate and numeric results carry week,
+run, mouse, split-group and selection-mode metadata. 04/05 check this metadata
+against the current config before processing. 04 labels its repeated factor week
+or run and uses real mouse IDs; a single condition uses the condition factor only.
 
 ## Edge
 
-```yaml
-Edge:
-  seed: 42
-  repeat: 50
-  threshold: 99
-  gap: 0.25
-  cross_only: False
-  save_mat: True
+Edge shares analysis.split_axis and the actual ID groups; there is no Edge.split_axis.
+It computes raw-FC Phi/DP separately within each selected opposite-axis entry, then
+averages those values for the figure. Thus run/single can compute Edge from two
+runs in one week, and week/single can compute Edge from multiple weeks of one run.
+At least two split-axis samples and two complete mice are required.
+
+The shared groups are fixed. Edge.repeat does not repeat identical pairs, and
+Edge.seed does not determine an independent split in this workflow. These options
+remain for compatibility with direct legacy Edge calls and participate in config
+isolation. This change in pairing means old Edge outputs are not expected to be
+numerically reproduced. ID with run splits preserves the former run-as-session
+identification computation, apart from explicit output/metadata labels.
+
+Edge.threshold, gap, cross_only and save_mat control figures as before.
+
+## Outputs and configuration isolation
+
+The complete parsed config determines a stable short hash, with output root:
+`<output>/seed_<group_mode>_<session_seed>[_repeatID]_edge<edge_seed>_<hash>/<dataset>/`.
+Changing any config value, including analysis axes, selects a different directory.
+Set the final config before running 02–05. No cross-config cache fallback or
+automatic old-PKL migration is performed. Source FC computations are invariant
+under input directory permutation, but table schema and config identity changed.
+
+```text
+Correlation/
+  FC_Matrix/<week>_<mouse>_<run>_FC_Matrix_<atlas>_excluded.{npy,cache.pkl}
+  Figures/
+  <week>_correlation_matrices_<atlas>_excluded.pkl
+Identification/
+  cohort_selection.json
+  statistics.pkl
+  <condition>/Numeric/
+  <condition>/EdgeContri/
+  <condition>/Similarity/
+  <condition>/Stat/
+Statistics/
+  analysis_metadata.json
+  Tables/
+    Supplement/
+BatchReports/
+analysis_config.json
 ```
 
-- `seed`: random seed for repeated edge contribution splits.
-- `repeat`: number of repeated random trial splits.
-- `threshold`: percentile threshold for circular graph visualization.
-- `gap`: visual gap between modules in circular graphs.
-- `cross_only`: whether to keep only cross-module edges.
-- `save_mat`: whether to save matrix-style companion figures from circular graph outputs.
+02 PKLs always have mouse rows and run columns, one table per week/atlas. Missing
+cells remain None. Reports use week, mouse, run, atlas identities and include
+actual source paths for successful recordings. FC reuse validates source metadata,
+masks, computation signature and config identity; missing sources cannot be hidden
+by a cache. Plot settings/readability are checked independently of FC reuse.
 
-## supplement
+04 writes observations, ANOVA and FDR post-hoc tables. 05 uses
+supplement.structure_atlases, structure_group_names and exclude, exporting DD/ND
+observations with actual analysis-condition labels. The existing 05 inferential
+model still treats condition-level summaries as repeated observations; the pending
+statistical-design concerns described in docs/optimization.md are not resolved by
+this dimension migration. Conditions are not automatically independent samples. With only one condition,
+05 saves descriptions/plots and inference_status.json with unavailable status.
 
-This section controls `scripts/05_supplement.py`. The script is optional and uses the `statistics.pkl` file generated by `03_identification.py`.
+## Preprocessing resume
 
-```yaml
-supplement:
-  structure_atlases: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED", "AUDv"], ["AUDv"]]
-  structure_group_names: ["Association", "Sensory excluding AUDv", "Whole Brain excluding AUDv"]
-  exclude: []
-```
+With `preprocess.resume: True`, 01 validates each step's outputs before skipping it. It checks TIFF byte ranges and frame dimensions/counts, NPY structure/size, preview readability and dependencies. Step 4 skips both manual selection and transformation when its NPY and preview are complete. A running/complete JSON marker per step prevents interrupted runs being mistaken for completed runs. Changed upstream files cause dependent steps to rerun; changing the chamber mask reruns step 5. Older outputs without markers are adopted after structural validation and dependency timestamp checks. These checks detect incomplete files, not arbitrary numerical corruption; legacy output provenance cannot be reconstructed.
 
-- `analysis.statistics_file`: shared statistics filename for 03, 04 and 05 (see below); the old supplement-only setting is a fallback for older configurations.
-- `structure_atlases`: atlas conditions to compare in `05_supplement.py`. Each inner list is converted to the same underscore-joined row tag used in `statistics.pkl`, for example `["SM", "VIS", "AUD"]` becomes `SM_VIS_AUD`.
-- `structure_group_names`: display names paired with `structure_atlases`. Keep the same length and order as `structure_atlases`.
-- `exclude`: statistic rows ignored before structure-space analysis.
+Set `resume: False` to rerun all five steps. Before rerunning Suite2p, an existing recording-local `suite2p/` directory is renamed to `suite2p.previous-<timestamp>/` to preserve it and avoid merging stale TIFF chunks. The legacy global `OIS_Corrected` directory is neither migrated nor deleted.
 
-`05_supplement.py` extracts two metrics from each selected condition:
+Suite2p checkpoints include the installed Suite2p version and the adapter source hash. A change to either reruns registration and downstream steps; complete legacy outputs without checkpoint metadata are still adopted after structural validation.
 
-- `diagonal_dominance`: reported as DD.
-- `normalized_distance_to_diagonal`: reported as ND.
-
-It writes DD/ND boxplots and a DD-ND structure-space plot under `paths.output/<analysis_tag>/<dataset>/Statistics/`, and logs RM-ANOVA and MANOVA tables to `paths.log`.
 
 ## visualization
 
@@ -173,93 +196,3 @@ Visualization presets keep plotting style out of the analysis scripts.
 - `supplement_structure_space`: DD-ND structure-space scatter style.
 
 Script-level presets are merged with plot-specific runtime values such as output names, labels, and data-dependent axis ticks.
-
-## Choosing a Config
-
-Use `configs/default.yaml` as a self-contained relative-path template.
-
-Use `configs/OIS.yaml` when working with the external OIS data root currently written in that file.
-
-For a new dataset, copy one of these files and edit:
-
-1. `paths.raw`
-2. `variables.dataset`
-3. `variables.Session_ids`
-4. `variables.Mouse_ids`
-5. `variables.Trial_ids`
-6. `variables.Atlas`
-
-
-## Analysis output and resume
-
-```yaml
-analysis:
-  statistics_file: "statistics.pkl"
-preprocess:
-  resume: True
-ID:
-  group_mode: random
-  session_seed: 42
-  repeat_session: null
-Edge:
-  seed: 42
-```
-
-Output layout is `<paths.output>/seed_<mode>_<session_seed>[_repeatN]_edge<edge_seed>_<configuration-hash>/<dataset>/`.
-The short hash is calculated from the complete parsed configuration, including session/data selections, ID/Edge settings, paths and visualization settings. Relative paths remain relative to the launch directory. Repeating the same configuration reuses the same analysis directory. `analysis_config.json` records the configuration, actual session groups and trial order. `analysis.statistics_file` is a filename (not an absolute path); older supplement-only configurations remain supported.
-
-03 uses the configured mouse IDs and trial order when selecting pickle entries. Each `NTrial/` directory contains identification results for the first N trials, numerical similarity/subject/statistics exports, full shuffle results, edge contributions and a one-column copy of the shared statistics pickle. A combined pickle in Identification/ serves 04/05. Edge keeps the original within-session trial split: 1Trial is explicitly unavailable; N>=2 uses only the first N trials.
-
-04 exports ANOVA, repeated-measures ANOVA, observations and FDR-corrected post-hoc CSV tables under `Statistics/Tables/`. 05 exports input observations, ANOVA tables and MANOVA tables/numerical results under `Statistics/Tables/Supplement/`. Edge CSV matrices and session-wise Phi/DP pickle results are saved in addition to graph images.
-
-With `preprocess.resume: True`, 01 validates each step's outputs before skipping it. It checks TIFF byte ranges and frame dimensions/counts, NPY structure/size, preview readability and dependencies. Step 4 skips both manual selection and transformation when its NPY and preview are complete. A running/complete JSON marker per step prevents interrupted runs being mistaken for completed runs. Changed upstream files cause dependent steps to rerun; changing the chamber mask reruns step 5. Older outputs without markers are adopted after structural validation and dependency timestamp checks. These checks detect incomplete files, not arbitrary numerical corruption; legacy output provenance cannot be reconstructed.
-
-Set `resume: False` to rerun all five steps. Before rerunning Suite2p, an existing recording-local `suite2p/` directory is renamed to `suite2p.previous-<timestamp>/` to preserve it and avoid merging stale TIFF chunks. The legacy global `OIS_Corrected` directory is neither migrated nor deleted.
-
-Suite2p checkpoints include the installed Suite2p version and the adapter source hash. A change to either reruns registration and downstream steps; complete legacy outputs without checkpoint metadata are still adopted after structural validation.
-
-## Stage 02 configuration-isolated result reuse
-
-`correlation.resume: True` reuses only validated per-record caches in the current
-configuration directory. The directory suffix is the deterministic hash of the
-complete parsed YAML configuration (not a run timestamp or random value).
-
-- Source: `processed/<dataset>/<session>/<mouse>/<trial>/*_FiltDRR.npy`.
-- FC caches and arrays: `output/<analysis_tag>/<dataset>/Correlation/FC_Matrix/`.
-- Session tables: `output/<analysis_tag>/<dataset>/Correlation/*_excluded.pkl`.
-- Stage 03 reads both identification and Edge inputs only from this Correlation directory.
-- Stages 04–05 read the aggregate in Identification/ and save their results in Statistics/.
-
-Changing any configuration value selects another directory. Repeating the same
-configuration reuses verified results; changed source metadata, masks, or algorithm
-invalidates numerical caches. No legacy adoption or shared-directory fallback is
-performed. Old outputs are left untouched but are not used automatically. The first
-run under this new full-configuration hash therefore recomputes FC. `resume: False`
-forces computation. Missing files and failures remain reported separately.
-
-## Stage output directories
-
-All stages share the same configuration-specific root:
-
-```text
-output/<analysis_tag>/<dataset>/
-  Correlation/
-    FC_Matrix/                 # 02 numerical arrays and validated caches
-    Figures/                   # 02 heatmaps and plot checkpoints
-    <session>_correlation_matrices_<atlas>_excluded.pkl
-  Identification/
-    statistics.pkl             # 03 aggregate; filename configured by analysis.statistics_file
-    1Trial/                    # 03 per-trial numeric results, figures and Edge analysis
-    2Trial/
-    ...
-  Statistics/                  # shared 04 and 05 figures
-    Tables/                    # 04 statistical tables
-      Supplement/              # 05 statistical tables
-  BatchReports/
-  analysis_config.json
-```
-
-04 and 05 read the aggregate from Identification, then write to Statistics.
-Existing files in the former output locations are not automatically moved or read.
-02 numerical caches remain in Correlation/FC_Matrix; missing Figures are regenerated
-from valid caches without repeating numerical computation.

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import pandas as pd
 
+from srcs.utils.dataset import (select_complete_cohort, analysis_plan, load_week_tables, axis_frames)
 from srcs.utils.config import load_context
 from srcs.utils.utils import build_half_dataframe
 from srcs.utils.results import save_json, save_pickle, save_table
@@ -19,78 +20,37 @@ warnings.filterwarnings(
 
 
 def select_complete_mice(ctx):
-    """Fixed complete cohort across all configured sessions/trials/atlases."""
-    reports = list((Path(ctx.output_path) / "BatchReports").glob("02_correlation_*.json"))
-    if not reports:
-        raise FileNotFoundError("03 requires a 02_correlation_*.json BatchReport in the current configuration directory")
-    report_path = max(reports, key=lambda p: (p.stat().st_mtime_ns, p.name))
-    report = json.loads(report_path.read_text(encoding="utf-8"))
-    tags = ["_".join(a) for a in ctx.atlases]
-    expected = {(s, m, t, a) for s in ctx.sessions for m in ctx.mice
-                for t in ctx.trials for a in tags}
-    records = {}
-    for row in report["records"]:
-        key = tuple(row[k] for k in ("session", "mouse", "trial", "atlas"))
-        if key in records:
-            raise ValueError(f"Duplicate record in BatchReport: {key}")
-        records[key] = row
-    if set(records) != expected:
-        raise ValueError(f"Latest 02 BatchReport is incomplete or has a different scope: {report_path}; "
-                         f"missing={len(expected-set(records))}, extra={len(set(records)-expected)}")
-    reasons = {mouse: [] for mouse in ctx.mice}
-    tables = []
-    for atlas in tags:
-        reference = None
-        for session in ctx.sessions:
-            path = Path(ctx.correlation_path) / f"{session}_correlation_matrices_{atlas}_excluded.pkl"
-            frame = pd.read_pickle(path)
-            if not isinstance(frame, pd.DataFrame) or not frame.index.is_unique or not frame.columns.is_unique:
-                raise ValueError(f"Invalid aggregate table: {path}")
-            tables.append(str(path))
-            for mouse in ctx.mice:
-                for trial in ctx.trials:
-                    row = records[(session, mouse, trial, atlas)]
-                    issues = []
-                    if row["status"] not in ("success", "reused"):
-                        issues.append(f"report {row['status']}: {row.get('reason', '')}")
-                    cell = frame.at[mouse, trial] if mouse in frame.index and trial in frame.columns else None
-                    if not isinstance(cell, pd.DataFrame):
-                        issues.append("missing matrix in PKL")
-                    else:
-                        from srcs.comp.correlation import valid_fc
-                        names = list(cell.index)
-                        if not valid_fc(cell, names):
-                            issues.append("invalid matrix in PKL")
-                        elif reference is None:
-                            reference = names
-                        elif names != reference:
-                            issues.append("inconsistent ROI labels/order")
-                    if issues:
-                        reasons[mouse].append({"session": session, "trial": trial, "atlas": atlas,
-                                               "reasons": issues})
-    kept = [m for m in ctx.mice if not reasons[m]]
-    audit = {"policy": "fixed_complete_mice_across_full_analysis", "batch_report": str(report_path),
-             "tables": tables, "configured_mice": list(ctx.mice), "retained_mice": kept,
-             "excluded_mice": {m: r for m, r in reasons.items() if r},
-             "sessions": list(ctx.sessions), "trials": list(ctx.trials), "atlases": tags}
-    return kept, audit
+    """Compatibility entry point for the canonical week-based cohort selector."""
+    return select_complete_cohort(ctx)
 
 
 ctx = load_context()
 logger = ctx.logger
 analysis_mice, cohort_audit = select_complete_mice(ctx)
+analysis_weeks = cohort_audit["retained_weeks"]
 save_json(os.path.join(ctx.output_dir("Identification"), "cohort_selection.json"), cohort_audit)
-logger.info("Fixed complete mouse cohort: retained=%s; excluded=%s", analysis_mice,
-            list(cohort_audit["excluded_mice"]))
 if len(analysis_mice) < 2:
     raise ValueError("Fewer than two complete mice remain; see Identification/cohort_selection.json")
+conditions = analysis_plan(ctx, analysis_weeks)
+group_indices = ctx.group_indices(analysis_weeks, ctx.runs)
+split_groups = ctx.split_groups(analysis_weeks, ctx.runs)
+analysis_meta = dict(schema="week_mouse_run_v1", split_axis=ctx.split_axis,
+                     selection_mode=ctx.selection_mode, conditions=conditions,
+                     split_groups=split_groups, mice=analysis_mice,
+                     weeks=analysis_weeks, runs=ctx.runs)
+cohort_audit["analysis"] = analysis_meta
+save_json(os.path.join(ctx.output_dir("Identification"), "cohort_selection.json"), cohort_audit)
+ctx.save_analysis_metadata(analysis_meta)
+logger.info("Cohort=%s; weeks=%s; analysis=%s", analysis_mice, analysis_weeks, analysis_meta)
 id_cfg = ctx.section("ID")
 edge_cfg = ctx.section("Edge")
 session_seed = ctx.session_seed
-repeat_session = ctx.repeat_session
-ctx.save_analysis_metadata()
-logger.info(f"Analysis output: {ctx.output_path}")
-logger.info(f"Session groups: {ctx.session_groups}")
+# The shared repeat ID resolves against the selected split axis, after cover.
+repeat_id = id_cfg.get("repeat_id")
+split_ids = analysis_weeks if ctx.split_axis == "week" else ctx.runs
+if isinstance(repeat_id, str):
+    repeat_id = split_ids.index(repeat_id) + 1
+
 render_options = ctx.render_options()
 rel_box_preset = ctx.viz_style("stat_box", "stat_rel_effect_box")
 group_indiv_box_preset = ctx.viz_style("stat_box", "stat_group_indiv_box")
@@ -99,18 +59,18 @@ edge_dp_preset = ctx.viz_style("edge_dp")
 
 df = pd.DataFrame(
     index=["_".join(atlas) for atlas in ctx.atlases],
-    columns=[f"{n}Trial" for n in range(1, len(ctx.trials) + 1)],
+    columns=list(conditions),
 )
 
 df.attrs["cohort_selection"] = cohort_audit
+df.attrs["analysis"] = analysis_meta
 
-for trial_cnt in range(len(ctx.trials)):
+for tag, selection in conditions.items():
     data = [[], []]
     relE = []
     labels = []
 
-    trial_cnt += 1
-    tag = f"{trial_cnt}Trial"
+    selected_weeks, selected_runs = selection["weeks"], selection["runs"]
     summary_rows = []
     trial_path = ctx.output_dir("Identification", tag)
 
@@ -119,23 +79,14 @@ for trial_cnt in range(len(ctx.trials)):
 
         logger.info(f"\n>>> {tag} Atlas {label} excluded:")
 
-        session_paths = [
-            os.path.join(ctx.correlation_path, f"{session}_correlation_matrices_{label}_excluded.pkl")
-            for session in ctx.sessions
-        ]
-        missing_paths = [path for path in session_paths if not os.path.exists(path)]
-        if missing_paths:
-            logger.raise_(FileNotFoundError(
-                "Missing correlation matrix files from config sessions: "
-                + ", ".join(missing_paths)
-            ))
-
+        tables = load_week_tables(ctx, label, analysis_mice, selected_weeks, selected_runs)
+        frames = axis_frames(tables, ctx.split_axis, analysis_mice, selected_weeks, selected_runs)
         df_out = build_half_dataframe(
-            session_paths, trial_cnt, ctx.group_mode,
-            repeat_session=repeat_session, seed=session_seed,
-            mouse_ids=analysis_mice, trial_ids=ctx.trials,
+            list(frames.values()), 0, ctx.group_mode,
+            repeat_session=repeat_id, seed=session_seed,
+            mouse_ids=analysis_mice,
         )
-        logger.info(f"Session groups: {df_out.attrs['session_groups']}")
+        logger.info("Split groups: %s", split_groups)
 
         # Identify
         ID = Identify(df_out, atlas_exclude=atlas)
@@ -169,7 +120,8 @@ for trial_cnt in range(len(ctx.trials)):
             "similarity": sim_mat, "group": Group, "individual": Indiv,
             "relative_effect": relEft, "cohen_d": cohen_d, "statistics": stat,
             "mice": analysis_mice, "roi_labels": info[2],
-            "trial_ids": ctx.trials[:trial_cnt], "session_groups": ctx.session_groups,
+            "weeks": selected_weeks, "runs": selected_runs, "analysis": analysis_meta,
+            "split_groups": split_groups,
         })
         save_table(os.path.join(numeric_path, f"similarity_{label}.csv"),
                    pd.DataFrame(sim_mat, index=analysis_mice, columns=analysis_mice))
@@ -177,8 +129,11 @@ for trial_cnt in range(len(ctx.trials)):
                    pd.DataFrame({"group": Group, "individual": Indiv, "relative_effect": relEft},
                                 index=pd.Index(analysis_mice, name="mouse")))
         save_json(os.path.join(numeric_path, f"statistics_{label}.json"), {**stat, "cohen_d": cohen_d})
-        summary_rows.append({"atlas": label, "trial_count": trial_cnt, **stat, "cohen_d": cohen_d})
+        summary_rows.append({"atlas": label, "condition": tag, "split_axis": ctx.split_axis, "selection_mode": ctx.selection_mode, "week_count": len(selected_weeks), "run_count": len(selected_runs), **stat, "cohen_d": cohen_d})
         if shuffle_result is not None:
+            shuffle_result["analysis_selection"] = selection
+            shuffle_result["split_axis"] = ctx.split_axis
+            shuffle_result["split_groups"] = split_groups
             save_pickle(os.path.join(numeric_path, f"shuffle_{label}.pkl"), shuffle_result)
             save_json(os.path.join(numeric_path, f"shuffle_{label}.json"), shuffle_result)
 
@@ -188,27 +143,29 @@ for trial_cnt in range(len(ctx.trials)):
         relE.append(relEft)
         df.at["_".join(atlas), tag] = [Group, Indiv, relEft, stat, cohen_d]
 
+        # Edge holds each selected opposite-axis sample fixed and splits the same axis as ID.
+        edge_axis = "week" if ctx.split_axis == "run" else "run"
+        edge_frames = axis_frames(tables, edge_axis, analysis_mice, selected_weeks, selected_runs)
         EC = Edgewise_Contribution(
-            path=ctx.correlation_path,
-            mouse_ids=analysis_mice,
-            sessions=ctx.sessions,
-            seed=edge_cfg["seed"],
-            atlas_exclude=atlas,
-            trial_cnt=trial_cnt, trial_ids=ctx.trials,
+            path=ctx.correlation_path, mouse_ids=analysis_mice,
+            sessions=list(edge_frames), seed=edge_cfg["seed"], atlas_exclude=atlas,
+            frames=edge_frames, group_indices=group_indices,
         )
-
         Phi, DP = EC.run(repeat=edge_cfg["repeat"])
 
         save_path = ctx.output_dir("Identification", tag, "EdgeContri")
 
         save_pickle(os.path.join(save_path, f"edges_{label}_{tag}.pkl"), {
             "Phi": Phi, "DP": DP, "roi_labels": EC.roi_labels, "mice": analysis_mice,
-            "trial_ids": ctx.trials[:trial_cnt],
+            "weeks": selected_weeks, "runs": selected_runs,
+            "split_axis": ctx.split_axis, "split_groups": split_groups,
+            "pairing": "shared_ID_groups", "per_sample_axis": edge_axis,
+            "effective_repeats": 1,
             "status": "complete" if Phi and DP else "unavailable",
-            "reason": None if Phi and DP else "At least two valid trials and two mice per session are required.",
+            "reason": None if Phi and DP else "At least two samples on the split axis and two complete mice are required.",
         })
         if not Phi or not DP:
-            logger.warning(f"{tag}: Edge unavailable (needs >=2 trials and >=2 mice/session).")
+            logger.warning(f"{tag}: Edge unavailable (needs >=2 samples on split axis and >=2 mice).")
         else:
             # Group Consistency (Phi)
             avg_phi = np.mean(list(Phi.values()), axis=0)

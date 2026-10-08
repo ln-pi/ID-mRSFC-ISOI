@@ -7,7 +7,7 @@ from typing import Any
 import yaml
 
 from srcs.utils.logger import setup_logger
-from srcs.utils.utils import parse_args, split_session_indices
+from srcs.utils.utils import parse_args, split_group_indices
 
 
 @dataclass
@@ -45,16 +45,39 @@ class RunContext:
         return self.variables["dataset"]
 
     @property
-    def sessions(self):
-        return self.variables["Session_ids"]
+    def weeks(self):
+        return self._ids("Week_ids")
+
+    def _ids(self, name):
+        values = self.variables.get(name)
+        if not isinstance(values, list) or not values or any(
+            not isinstance(v, str) or not v or v in (".", "..") or "/" in v or "\\" in v
+            for v in values
+        ) or len(set(values)) != len(values):
+            raise ValueError(f"variables.{name} requires unique, nonempty directory IDs")
+        return values
 
     @property
     def mice(self):
-        return self.variables["Mouse_ids"]
+        return self._ids("Mouse_ids")
 
     @property
-    def trials(self):
-        return self.variables["Trial_ids"]
+    def runs(self):
+        return self._ids("Run_ids")
+
+    @property
+    def split_axis(self):
+        value = self.section("analysis").get("split_axis", "run")
+        if value not in ("week", "run"):
+            raise ValueError("analysis.split_axis must be week or run")
+        return value
+
+    @property
+    def selection_mode(self):
+        value = self.section("analysis").get("selection_mode", "cumulative")
+        if value not in ("single", "cumulative"):
+            raise ValueError("analysis.selection_mode must be single or cumulative")
+        return value
 
     @property
     def atlases(self):
@@ -79,20 +102,18 @@ class RunContext:
     def group_mode(self):
         return self.section("ID").get("group_mode", "random")
 
-    @property
-    def repeat_session(self):
-        repeat = self.section("ID").get("repeat_session")
+    def group_indices(self, weeks=None, runs=None):
+        ids = (self.weeks if weeks is None else weeks) if self.split_axis == "week" else (self.runs if runs is None else runs)
+        repeat = self.section("ID").get("repeat_id")
         if isinstance(repeat, str):
-            if repeat not in self.sessions:
-                raise ValueError(f"Unknown repeat_session: {repeat}")
-            repeat = self.sessions.index(repeat) + 1
-        return repeat
+            if repeat not in ids:
+                raise ValueError(f"Unknown ID.repeat_id on selected {self.split_axis} axis: {repeat}")
+            repeat = ids.index(repeat) + 1
+        return split_group_indices(len(ids), self.group_mode, repeat, self.session_seed)
 
-    @property
-    def session_groups(self):
-        groups = split_session_indices(len(self.sessions), self.group_mode,
-                                       self.repeat_session, self.session_seed)
-        return [[self.sessions[i] for i in group] for group in groups]
+    def split_groups(self, weeks=None, runs=None):
+        ids = (self.weeks if weeks is None else weeks) if self.split_axis == "week" else (self.runs if runs is None else runs)
+        return [[ids[i] for i in group] for group in self.group_indices(weeks, runs)]
 
     @property
     def analysis_tag(self):
@@ -101,7 +122,8 @@ class RunContext:
             raise ValueError("Edge.seed must be a nonnegative integer for reproducible analysis.")
         identity = self.config  # Deterministic isolation by the complete parsed configuration.
         digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:10]
-        repeat = f"_repeat{self.repeat_session}" if self.repeat_session is not None else ""
+        repeat_id = self.section("ID").get("repeat_id")
+        repeat = f"_repeat{repeat_id}" if repeat_id is not None else ""
         return f"seed_{self.group_mode}_{self.session_seed}{repeat}_edge{edge_seed}_{digest}"
 
     @property
@@ -121,12 +143,13 @@ class RunContext:
     def statistics_path(self):
         return os.path.join(self.output_path, "Identification", self.statistics_file)
 
-    def save_analysis_metadata(self):
+    def save_analysis_metadata(self, selection=None):
         from srcs.utils.results import save_json
         save_json(os.path.join(self.output_path, "analysis_config.json"), {
-            "config": self.config, "session_groups": self.session_groups,
-            "session_seed": self.session_seed, "output_path": self.output_path,
-            "trial_order": self.trials,
+            "config": self.config, "split_axis": self.split_axis,
+            "selection_mode": self.selection_mode, "session_seed": self.session_seed,
+            "week_order": self.weeks, "run_order": self.runs,
+            "output_path": self.output_path, "selection": selection,
         })
 
     def section(self, name, default=None):

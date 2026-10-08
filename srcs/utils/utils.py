@@ -197,7 +197,7 @@ def average_matrices(m1, m2):
     z2 = fisher_z(extrack_matrix(m2))
     return (z1 + z2) / 2
 
-def split_session_indices(session_count, group_mode="sequential", repeat_session=None, seed=None):
+def split_group_indices(session_count, group_mode="sequential", repeat_session=None, seed=None):
     """Return zero-based groups; repeat_session is a one-based position."""
     if isinstance(session_count, bool) or not isinstance(session_count, (int, np.integer)) or session_count < 2:
         raise ValueError("At least two sessions are required.")
@@ -227,6 +227,9 @@ def split_session_indices(session_count, group_mode="sequential", repeat_session
     return first, second
 
 
+split_session_indices = split_group_indices  # Compatibility for external callers.
+
+
 def build_half_dataframe(session_paths, trial_cnt=0, group_mode="sequential",
                          repeat_session=None, seed=None, mouse_ids=None, trial_ids=None):
     """Average Fisher-z matrices over equal session halves and selected trials.
@@ -236,8 +239,8 @@ def build_half_dataframe(session_paths, trial_cnt=0, group_mode="sequential",
     Outputs remain in Fisher-z space, matching the original implementation.
     """
     session_paths = list(session_paths)
-    groups = split_session_indices(len(session_paths), group_mode, repeat_session, seed)
-    sessions = [load_pkl(p) for p in session_paths]
+    groups = split_group_indices(len(session_paths), group_mode, repeat_session, seed)
+    sessions = [p if isinstance(p, pd.DataFrame) else load_pkl(p) for p in session_paths]
     if not all(isinstance(frame, pd.DataFrame) for frame in sessions):
         raise ValueError("Each session must contain a mouse-by-trial DataFrame.")
     if mouse_ids is not None or trial_ids is not None:
@@ -259,7 +262,8 @@ def build_half_dataframe(session_paths, trial_cnt=0, group_mode="sequential",
     trials = reference.columns[:trial_cnt] if trial_cnt else reference.columns
     df_out = pd.DataFrame(index=["1st", "2nd"], columns=reference.index, dtype=object)
     df_out.attrs["session_groups"] = {
-        name: [str(session_paths[i]) for i in indices]
+        name: [sessions[i].attrs.get("axis_id", str(i)) if isinstance(session_paths[i], pd.DataFrame)
+               else str(session_paths[i]) for i in indices]
         for name, indices in zip(df_out.index, groups)
     }
     for mouse in reference.index:

@@ -5,16 +5,16 @@
 # ---------- Info ----------
 paths:
   raw: "F:\\OIS_Awake_Mice\\"
-  processed: "D:\\data\\"
+  processed: "D:\\data\\processed\\"
   output: "data\\output\\"
   mask: "data\\mask\\"
   log: "logs\\OIS.log"
 
 variables:
   dataset: ""
-  Session_ids: ["Run01", "Run02"]
-  Mouse_ids: ["A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A09", "A10"]
-  Trial_ids: ["00w", "01w", "02w", "03w", "04w", "05w", "06w", "07w", "08w", "09w", "10w", "11w", "12w", "13w"]
+  Week_ids: ["00w", "01w", "02w", "03w", "04w", "05w", "06w", "07w", "08w", "09w", "10w", "11w", "12w", "13w"]
+  Mouse_ids: ["N01", "N02", "N03", "N04", "N05", "N06", "N07", "N08", "N09", "N10", "N11", "N12", "N13", "N14"]
+  Run_ids: ["Run01", "Run02"]
   Atlas: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED", "AUDv"], ["AUDv"]]
 
 # ---------- Preprocess ----------
@@ -36,12 +36,15 @@ correlation:
 
 # ---------- Analysis ----------
 analysis:
+  split_axis: week  # group runs; week groups weeks instead
+  selection_mode: single  # process the opposite axis singly or cumulatively
   statistics_file: "statistics.pkl"  # shared by 03, 04 and 05
 
 ID:
+  completeness_mode: strict  # strict: all weeks/runs; cover: maximum complete mouse x contiguous week area
   group_mode: random  # sequential or random
-  repeat_session: null  # odd sequential split: session ID or one-based position
-  session_seed: 42  # reproducible random session split
+  repeat_id: null  # ID or one-based position on the split axis; odd sequential only
+  session_seed: 42  # reproducible random axis split
   shuffle: True
   n_iter: 1000
 

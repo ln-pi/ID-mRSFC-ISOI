@@ -8,12 +8,13 @@ from statsmodels.multivariate.manova import MANOVA
 from statsmodels.stats.anova import AnovaRM
 
 from srcs.utils.config import load_context
-from srcs.utils.results import save_pickle, save_table
+from srcs.utils.results import save_pickle, save_table, save_json
+from srcs.utils.dataset import statistics_metadata
 from srcs.vis.PlotSeries import PlotSeries
 
 
 class StructureAnalyzer:
-    def __init__(self, DD, ND, group_names=("A", "B", "C"), logger=None):
+    def __init__(self, DD, ND, group_names=("A", "B", "C"), logger=None, condition_ids=None):
         self.groups = list(group_names)
         self.logger = logger
 
@@ -27,6 +28,7 @@ class StructureAnalyzer:
         }
 
         self.n_trials = len(DD[0])
+        self.condition_ids = list(condition_ids) if condition_ids is not None else list(range(self.n_trials))
         self.df_rm = self._build_rm_dataframe()
         self.df_manova = self._build_manova_dataframe()
 
@@ -35,7 +37,7 @@ class StructureAnalyzer:
         for trial in range(self.n_trials):
             for group in self.groups:
                 rows.append({
-                    "trial": trial,
+                    "analysis_condition": self.condition_ids[trial],
                     "group": group,
                     "DD": self.DD[group][trial],
                     "ND": self.ND[group][trial],
@@ -48,6 +50,7 @@ class StructureAnalyzer:
             for trial in range(self.n_trials):
                 rows.append({
                     "group": group,
+                    "analysis_condition": self.condition_ids[trial],
                     "DD": self.DD[group][trial],
                     "ND": self.ND[group][trial],
                 })
@@ -57,7 +60,7 @@ class StructureAnalyzer:
         return AnovaRM(
             data=self.df_rm,
             depvar="DD",
-            subject="trial",
+            subject="analysis_condition",
             within=["group"],
         ).fit()
 
@@ -65,7 +68,7 @@ class StructureAnalyzer:
         return AnovaRM(
             data=self.df_rm,
             depvar="ND",
-            subject="trial",
+            subject="analysis_condition",
             within=["group"],
         ).fit()
 
@@ -153,6 +156,8 @@ def main():
     stat_df_path = ctx.statistics_path
     with open(stat_df_path, "rb") as f:
         stat = pickle.load(f)
+    analysis_meta = statistics_metadata(ctx, stat)
+    save_json(os.path.join(ctx.output_dir("Statistics", "Tables", "Supplement"), "analysis_metadata.json"), analysis_meta)
 
     group_atlases = supplement_cfg.get(
         "structure_atlases",
@@ -165,15 +170,25 @@ def main():
     exclude = supplement_cfg.get("exclude", [])
 
     DD, ND = build_structure_inputs(stat, group_atlases, exclude=exclude)
-    analyzer = StructureAnalyzer(DD, ND, group_names=group_names, logger=logger)
-    summaries = analyzer.summary()
+    analyzer = StructureAnalyzer(DD, ND, group_names=group_names, logger=logger, condition_ids=stat.columns)
     table_path = ctx.output_dir("Statistics", "Tables", "Supplement")
+    if len(stat.columns) < 2:
+        logger.warning("05 inference unavailable: at least two analysis conditions are required")
+        summaries = {}
+        save_json(os.path.join(table_path, "inference_status.json"), {
+            "status": "unavailable", "reason": "At least two analysis conditions are required",
+            "analysis": analysis_meta,
+        })
+    else:
+        summaries = analyzer.summary()
+        save_json(os.path.join(table_path, "inference_status.json"), {"status": "complete"})
     save_table(os.path.join(table_path, "observations.csv"), analyzer.df_rm, index=False)
-    save_table(os.path.join(table_path, "rm_anova_dd.csv"), summaries["RM-ANOVA DD"].anova_table)
-    save_table(os.path.join(table_path, "rm_anova_nd.csv"), summaries["RM-ANOVA ND"].anova_table)
-    save_pickle(os.path.join(table_path, "manova.pkl"), summaries["MANOVA"].results)
-    for term, result in summaries["MANOVA"].results.items():
-        save_table(os.path.join(table_path, f"manova_{term}.csv"), result["stat"])
+    if summaries:
+        save_table(os.path.join(table_path, "rm_anova_dd.csv"), summaries["RM-ANOVA DD"].anova_table)
+        save_table(os.path.join(table_path, "rm_anova_nd.csv"), summaries["RM-ANOVA ND"].anova_table)
+        save_pickle(os.path.join(table_path, "manova.pkl"), summaries["MANOVA"].results)
+        for term, result in summaries["MANOVA"].results.items():
+            save_table(os.path.join(table_path, f"manova_{term}.csv"), result["stat"])
 
     save_path = ctx.output_dir("Statistics")
 

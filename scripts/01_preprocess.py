@@ -3,6 +3,7 @@ from pathlib import Path
 
 from tqdm import tqdm
 
+from srcs.utils.dataset import resolve_recording, preprocessing_folder
 from srcs.utils.config import load_context
 from srcs.utils.batch import BatchReport
 from srcs.utils.utils import load_chamber_mask
@@ -14,10 +15,10 @@ from srcs.prep.resume import (
 )
 
 
-def process_recording(ctx, session, mouse, trial):
+def process_recording(ctx, week, mouse, run):
     logger = ctx.logger
     settings = ctx.section("preprocess")
-    raw_path = os.path.join(ctx.raw_root, ctx.dataset, trial, session, mouse)
+    raw_path = str(resolve_recording(ctx, week, mouse, run, raw=True))
     info_path = os.path.join(raw_path, "info.txt")
     bins = sorted(Path(raw_path).glob("img*.bin"))
     if not bins or not os.path.isfile(info_path):
@@ -26,14 +27,14 @@ def process_recording(ctx, session, mouse, trial):
     spatial_shape = load_chamber_mask(ctx.mask_root).shape
     chamber_path = next(p for p in Path(ctx.mask_root).iterdir()
                         if p.name.casefold() == "chamber_mask.png")
-    folder = ctx.processed_dir(session, mouse, trial)
-    tiff_path = os.path.join(folder, f"{mouse}_{trial}.tif")
+    folder = str(preprocessing_folder(ctx, week, mouse, run))
+    tiff_path = os.path.join(folder, f"{mouse}_{run}.tif")
     suite_path = os.path.join(folder, "suite2p")
     reg_path = os.path.join(suite_path, "plane0", "reg_tif")
-    merged_path = os.path.join(folder, f"{mouse}_{trial}_merged.tif")
-    affine_path = os.path.join(folder, f"{mouse}_{trial}_Affine.npy")
-    preview_path = os.path.join(folder, f"{mouse}_{trial}_Average_After.png")
-    filtered_path = os.path.join(folder, f"{mouse}_{trial}_FiltDRR.npy")
+    merged_path = os.path.join(folder, f"{mouse}_{run}_merged.tif")
+    affine_path = os.path.join(folder, f"{mouse}_{run}_Affine.npy")
+    preview_path = os.path.join(folder, f"{mouse}_{run}_Average_After.png")
+    filtered_path = os.path.join(folder, f"{mouse}_{run}_{week}_FiltDRR.npy")
     runner = StepRunner(folder, logger, resume=settings.get("resume", True))
 
     # --- Step 1: Bin to TIFF ---
@@ -46,7 +47,7 @@ def process_recording(ctx, session, mouse, trial):
     # --- Step 2: Suite2p motion correction (isolated process) ---
     def correct():
         preserve_suite2p(suite_path)
-        run_isolated_process(tiff_file=tiff_path, mouse=mouse, trial=trial, save_path=folder)
+        run_isolated_process(tiff_file=tiff_path, mouse=mouse, trial=run, save_path=folder)
     runner.run("step2_suite2p", correct, lambda: registered_files(reg_path),
         lambda: check_registration(reg_path, tiff_path), dependencies=[tiff_path],
         parameters=suite2p_runtime_signature())
@@ -59,7 +60,7 @@ def process_recording(ctx, session, mouse, trial):
     # --- Step 4: Affine atlas registration ---
     atlas_root = Path(__file__).resolve().parents[1] / "srcs" / "atlas"
     runner.run("step4_affine",
-        lambda: Affine_Atlas(processed_path=folder, mouse=mouse, trial=trial),
+        lambda: Affine_Atlas(processed_path=folder, mouse=mouse, trial=run),
         [affine_path, preview_path],
         lambda: check_alignment(affine_path, preview_path, (tiff_shape(merged_path)[0], *spatial_shape)),
         dependencies=[merged_path, *[atlas_root / name for name in
@@ -67,25 +68,27 @@ def process_recording(ctx, session, mouse, trial):
 
     # --- Step 5: dRR ---
     runner.run("step5_drr",
-        lambda: drr_narrow(processed_path=folder, mouse=mouse, trial=trial, mask_root=ctx.mask_root),
+        lambda: drr_narrow(processed_path=folder, mouse=mouse, trial=run, week=week, mask_root=ctx.mask_root),
         [filtered_path], lambda: check_filtered(filtered_path, affine_path, spatial_shape),
         dependencies=[affine_path, chamber_path],
         parameters={"algorithm": "drr-gsr-filter-v1", "input_fps": 30, "output_fps": 5})
+
+    return dict(input_path=raw_path)
 
 
 def main():
     ctx = load_context()
     report = BatchReport(ctx, "01_preprocess")
-    total = len(ctx.sessions) * len(ctx.mice) * len(ctx.trials)
+    total = len(ctx.weeks) * len(ctx.mice) * len(ctx.runs)
     with tqdm(total=total, desc="Processing", leave=False) as pbar:
-        for session in ctx.sessions:
+        for week in ctx.weeks:
             for mouse in ctx.mice:
-                for trial in ctx.trials:
-                    pbar.set_postfix({"Session": session, "Mouse": mouse, "Trial": trial})
-                    ctx.logger.info(f">>> Processing Session: {session}, Mouse: {mouse}, Trial: {trial}")
-                    report.run(lambda: process_recording(ctx, session, mouse, trial),
-                        session=session, mouse=mouse, trial=trial,
-                        input_path=os.path.join(ctx.raw_root, ctx.dataset, trial, session, mouse))
+                for run in ctx.runs:
+                    pbar.set_postfix({"Week": week, "Mouse": mouse, "Run": run})
+                    ctx.logger.info(f">>> Processing Week: {week}, Mouse: {mouse}, Run: {run}")
+                    report.run(lambda: process_recording(ctx, week, mouse, run),
+                        week=week, mouse=mouse, run=run,
+                        input_root=os.path.join(ctx.raw_root, ctx.dataset))
                     pbar.update(1)
     report.finish()
 

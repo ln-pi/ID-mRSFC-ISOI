@@ -49,7 +49,10 @@ class BatchReport:
             row.update(status="failed", reason=str(exc), error_type=type(exc).__name__)
             self.logger.exception("Skipping failed record %s", identity)
         else:
-            row.update(status="reused" if outcome == "reused" else "success", reason="")
+            status = outcome.get("status") if isinstance(outcome, dict) else outcome
+            if isinstance(outcome, dict) and "input_path" in outcome:
+                row["input_path"] = outcome["input_path"]
+            row.update(status="reused" if status == "reused" else "success", reason="")
         self.rows.append(row)
         self.flush()
         return row["status"] in ("success", "reused")

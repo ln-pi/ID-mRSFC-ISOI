@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 
+from srcs.utils.dataset import resolve_recording
 from srcs.utils.results import _atomic, save_json, save_pickle
 from srcs.utils.utils import extract_roi, should_exclude
 from srcs.vis.PlotSeries import save_fc_heatmap
@@ -59,11 +60,11 @@ class CorrelationCache:
                          + inspect.getsource(should_exclude)
                          + Path(__file__).read_text(encoding="utf-8")).encode()).hexdigest()}
 
-    def process(self, session, mouse, trial):
+    def process(self, week, mouse, run):
         ctx = self.ctx
-        source = Path(ctx.processed_path) / session / mouse / trial / f"{mouse}_{trial}_FiltDRR.npy"
+        source = resolve_recording(ctx, week, mouse, run)
         key = dict(self.base, config_tag=ctx.analysis_tag, source=signature(source))  # Missing source must never be hidden by a cache.
-        stem = f"{session}_{mouse}_{trial}_FC_Matrix_{'_'.join(self.atlas)}_excluded"
+        stem = f"{week}_{mouse}_{run}_FC_Matrix_{'_'.join(self.atlas)}_excluded"
         folder = Path(ctx.correlation_path) / "FC_Matrix"
         folder.mkdir(parents=True, exist_ok=True)
         cached = folder / (stem + ".cache.pkl")

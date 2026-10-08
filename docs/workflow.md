@@ -52,7 +52,7 @@ python scripts/04_statistics.py -c configs/default.yaml
 Raw data should follow the config-defined layout:
 
 ```text
-<raw>/<dataset>/<trial>/<session>/<mouse>/
+<raw>/<dataset>/<week>/<run>/<mouse>/
 |-- info.txt
 |-- img*.bin
 `-- ai*.bin
@@ -61,16 +61,16 @@ Raw data should follow the config-defined layout:
 With `configs/default.yaml`, this means:
 
 ```text
-data/raw/WT/Trial1/Session1/A01/
+data/raw/WT/00w/Run01/A01/
 ```
 
-With `configs/OIS.yaml` (`dataset: ""`, trials `00w` through `10w`), this means:
+With `configs/OIS.yaml` (`dataset: ""`, configured weeks and runs), this means:
 
 ```text
-F:/OIS_Awake_Mice/00w/Run01/A01/
+F:/OIS_Awake_Mice/00w/Run01/N01/
 ```
 
-Only the raw input layout uses `trial/session/mouse`. Generated per-recording outputs use `session/mouse/trial`, as expected by the correlation stage.
+Raw and processed inputs may use any permutation of week/mouse/run directory levels. The configured IDs resolve each recording. Duplicate sources are reported as conflicts. New preprocessing outputs use week/mouse/run; a single existing recording folder can be resumed.
 
 ## 3. Prepare Masks
 
@@ -88,7 +88,7 @@ Filename case differences (e.g. `Chamber_mask.png`) are accepted. It is used for
 
 ## 4. Run Preprocessing
 
-Suite2p writes directly under each processed recording folder as `suite2p/plane0/reg_tif/`. It receives an explicit input file list containing only `<mouse>_<trial>.tif`, so re-running does not include `_merged.tif`. Existing outputs in the old `OIS_Corrected` directory are not migrated or deleted.
+Suite2p writes directly under each processed recording folder as `suite2p/plane0/reg_tif/`. It receives an explicit input file list containing only `<mouse>_<run>.tif`, so re-running does not include `_merged.tif`. Existing outputs in the old `OIS_Corrected` directory are not migrated or deleted.
 
 Preprocessing performs:
 
@@ -98,16 +98,16 @@ Preprocessing performs:
 4. Interactive atlas alignment.
 5. dR/R, detrending, global signal regression, normalization, filtering, and downsampling.
 
-Expected output per trial:
+Expected output per recording:
 
 ```text
-data/processed/<dataset>/<session>/<mouse>/<trial>/
-|-- suite2p/                 # registration outputs for this session/mouse/trial
-|-- <mouse>_<trial>.tif
-|-- <mouse>_<trial>_merged.tif
-|-- <mouse>_<trial>_Affine.npy
-|-- <mouse>_<trial>_Average_After.png
-`-- <mouse>_<trial>_FiltDRR.npy
+data/processed/<dataset>/<week>/<mouse>/<run>/
+|-- suite2p/                 # registration outputs for this week/mouse/run
+|-- <mouse>_<run>.tif
+|-- <mouse>_<run>_merged.tif
+|-- <mouse>_<run>_Affine.npy
+|-- <mouse>_<run>_Average_After.png
+`-- <mouse>_<run>_<week>_FiltDRR.npy
 ```
 
 Atlas alignment is interactive:
@@ -125,25 +125,30 @@ Atlas alignment is interactive:
 `02_correlation.py` reads:
 
 ```text
-data/processed/<dataset>/<session>/<mouse>/<trial>/<mouse>_<trial>_FiltDRR.npy
+data/processed/<dataset>/<week>/<mouse>/<run>/<mouse>_<run>_<week>_FiltDRR.npy
 ```
 
 and writes:
 
 ```text
-data/output/<analysis_tag>/<dataset>/Correlation/FC_Matrix/<session>_<mouse>_<trial>_FC_Matrix_<atlas_tag>_excluded.npy
-data/output/<analysis_tag>/<dataset>/Correlation/<session>_correlation_matrices_<atlas_tag>_excluded.pkl
-data/output/<analysis_tag>/<dataset>/Correlation/Figures/<session>_<mouse>_<trial>_FC_Matrix_<atlas_tag>_excluded.png
+data/output/<analysis_tag>/<dataset>/Correlation/FC_Matrix/<week>_<mouse>_<run>_FC_Matrix_<atlas_tag>_excluded.npy
+data/output/<analysis_tag>/<dataset>/Correlation/<week>_correlation_matrices_<atlas_tag>_excluded.pkl
+data/output/<analysis_tag>/<dataset>/Correlation/Figures/<week>_<mouse>_<run>_FC_Matrix_<atlas_tag>_excluded.png
 ```
 
 ## 6. Run Identification and Statistics
 
-`03_identification.py` loads session-level pkl files according to `Session_ids` in the active config. The config order is preserved.
+`03_identification.py` loads week-level PKLs (mouse rows, run columns).
+Set `analysis.split_axis: run|week` and `analysis.selection_mode: single|cumulative`.
+Run splits compare Run groups across individual/cumulative weeks; week splits
+compare week groups across individual/cumulative runs. Strict/cover always selects
+one fixed mouse cohort and week interval before analysis. See docs/config.md.
+Edge uses the same split axis and actual groups as ID.
 
 The script writes similarity, edge-contribution, and summary statistic outputs under:
 
 ```text
-data/output/<dataset>/
+data/output/<analysis_tag>/<dataset>/Identification/
 ```
 
 Then run `04_statistics.py` to summarize `statistics.pkl`.
@@ -172,7 +177,7 @@ The script builds a structure-space summary from the identification results:
 
 Before running, confirm these config fields:
 
-- `supplement.statistics_file`: statistics file name under `data/output/<dataset>/`.
+- `analysis.statistics_file`: shared aggregate filename under Identification/.
 - `supplement.structure_atlases`: atlas conditions to include, using the same tags generated from `variables.Atlas`.
 - `supplement.structure_group_names`: display names paired one-to-one with `structure_atlases`.
 - `supplement.exclude`: rows to ignore, such as `AUDv`.
@@ -187,7 +192,7 @@ data/output/<analysis_tag>/<dataset>/Statistics/
 `-- structure_space.png
 ```
 
-Statistical tables are written to the active log file.
+Statistical tables are written to Statistics/Tables/ and Statistics/Tables/Supplement/ and logged. Actual condition labels and analysis axes accompany the outputs.
 
 ## 8. Practical Notes
 
@@ -199,28 +204,28 @@ Statistical tables are written to the active log file.
 
 ## Cumulative analysis and preprocessing resume
 
-The current pipeline defaults to random session grouping with a reproducible seed.
+The pipeline uses a reproducible seed to group analysis.split_axis entries.
 All analysis output now lives under a seed/mode/configuration-specific directory inside `paths.output`; paths shown earlier in this document describe filenames and stage contracts, with this additional directory inserted before the dataset.
 
-03 saves separate `1Trial/`, `2Trial/`, ... results. 1Trial has valid identification results but no within-session split-half Edge estimate; its Edge result records this explicitly. Edge estimates at N>=2 use only the first N configured trials.
+03 saves separate week/run single conditions or cumulative `NWeek/` or `NRun/` conditions. Edge uses the same axis groups as ID; a single opposite-axis sample can still have a valid Edge estimate.
 
-01 resumes at the first incomplete or changed step, validates its new outputs, then reruns dependent downstream steps. A complete step 4 is skipped without opening the interactive alignment UI. Details and limitations are in [config.md](config.md#analysis-output-and-resume).
+01 resumes at the first incomplete or changed step, validates its new outputs, then reruns dependent downstream steps. A complete step 4 is skipped without opening the interactive alignment UI. Details and limitations are in [config.md](config.md#preprocessing-resume).
 
 ## Missing inputs in stages 01 and 02
 
 Stages 01 and 02 log missing inputs and per-record failures, then continue with
 later records. Each run writes a unique `BatchReports/<stage>_<timestamp>_<id>.json`
 under the configured analysis output directory, updating it after each record.
-The report includes success/missing/failed counts, session, mouse, trial, input
+The report includes success/missing/failed counts, week, mouse, run, input
 path, and error reason (also atlas for stage 02). Stage 01 success includes records
 whose complete outputs were reused by the existing resume mechanism.
 
-Stage 02 saves each session/atlas table with `None` in missing or failed cells;
+Stage 02 saves each week/atlas table with `None` in missing or failed cells;
 its `complete` attribute indicates whether every configured cell succeeded.
 Non-finite FC matrices count as failures. Existing individual output files from
 older runs are not deleted; the current table and batch report determine validity.
-Stages 03–05 have not been changed to accept incomplete tables. Inspect and resolve
-missing records before continuing downstream. Global setup or summary-write errors
+03 selects a fixed complete mouse cohort using strict/cover and verifies both
+the latest complete-scope report and PKL cells. 04/05 use its selected aggregate. Global setup or summary-write errors
 still stop the run; user interruption is not swallowed.
 
 ## Stage output directories
@@ -232,11 +237,10 @@ output/<analysis_tag>/<dataset>/
   Correlation/
     FC_Matrix/                 # 02 numerical arrays and validated caches
     Figures/                   # 02 heatmaps and plot checkpoints
-    <session>_correlation_matrices_<atlas>_excluded.pkl
+    <week>_correlation_matrices_<atlas>_excluded.pkl
   Identification/
     statistics.pkl             # 03 aggregate; filename configured by analysis.statistics_file
-    1Trial/                    # 03 per-trial numeric results, figures and Edge analysis
-    2Trial/
+    <condition>/               # week/run ID, NWeek or NRun
     ...
   Statistics/                  # shared 04 and 05 figures
     Tables/                    # 04 statistical tables
