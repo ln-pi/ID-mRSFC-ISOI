@@ -9,8 +9,10 @@ from statsmodels.stats.anova import AnovaRM
 from statsmodels.stats.multitest import multipletests
 
 from srcs.utils.config import load_context
+from srcs.comp.statistics import paired_effect_summary
 from srcs.utils.results import save_table, save_json
 from srcs.utils.dataset import statistics_metadata
+from srcs.io.writers import export_individual_identifiability
 from srcs.vis.PlotSeries import PlotSeries
 
 
@@ -26,6 +28,7 @@ analysis_meta = statistics_metadata(ctx, stat)
 condition_axis = "week" if analysis_meta["split_axis"] == "run" else "run"
 within = ["condition", condition_axis] if len(stat.columns) > 1 else ["condition"]
 save_json(os.path.join(ctx.output_dir("Statistics"), "analysis_metadata.json"), analysis_meta)
+export_individual_identifiability(ctx, stat, analysis_meta)
 
 # Plot Group-Indiv-Diff curve
 for atlas in ctx.atlases:
@@ -141,15 +144,14 @@ for trial in stat.columns:
                 b = data_dict[sys2][metric]
 
                 t, p = ttest_rel(a, b)
-                diff = np.array(a) - np.array(b)
-                d = np.mean(diff) / np.std(diff)
+                effect = paired_effect_summary(a, b)
 
                 results.append({
                     "metric": metric,
                     "comparison": f"{sys1} vs {sys2}",
                     "t": t,
                     "p_uncorrected": p,
-                    "cohen_d": d,
+                    **effect,
                 })
 
                 pvals.append(p)
@@ -187,5 +189,5 @@ for trial in stat.columns:
             f"{metric}: {comp}: "
             f"t({dfree}) = {t:.2f}, "
             f"{p_text}, "
-            f"Cohen's d = {d:.2f}"
+            f"paired Cohen's dz = {d:.2f}"
         )

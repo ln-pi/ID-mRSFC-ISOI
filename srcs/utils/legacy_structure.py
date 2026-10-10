@@ -1,3 +1,4 @@
+"""Optional legacy DD/ND analysis; deliberately outside the numbered pipeline."""
 import os
 import pickle
 
@@ -7,13 +8,12 @@ import pandas as pd
 from statsmodels.multivariate.manova import MANOVA
 from statsmodels.stats.anova import AnovaRM
 
-from srcs.utils.config import load_context
 from srcs.utils.results import save_pickle, save_table, save_json
 from srcs.utils.dataset import statistics_metadata
 from srcs.vis.PlotSeries import PlotSeries
 
 
-class StructureAnalyzer:
+class LegacyStructureAnalyzer:
     def __init__(self, DD, ND, group_names=("A", "B", "C"), logger=None, condition_ids=None):
         self.groups = list(group_names)
         self.logger = logger
@@ -147,8 +147,12 @@ def build_structure_inputs(stat, group_atlases, exclude=None):
     return DD, ND
 
 
-def main():
-    ctx = load_context()
+def run_legacy_structure_analysis(ctx, *, run_inference=False):
+    """Export legacy DD/ND separately; condition-level inference is opt-in.
+
+    Pass an explicit RunContext. This function neither parses CLI arguments nor
+    runs on import. Legacy inferential results are not animal-level evidence.
+    """
     logger = ctx.logger
     supplement_cfg = ctx.section("supplement")
     render_options = ctx.render_options()
@@ -157,7 +161,7 @@ def main():
     with open(stat_df_path, "rb") as f:
         stat = pickle.load(f)
     analysis_meta = statistics_metadata(ctx, stat)
-    save_json(os.path.join(ctx.output_dir("Statistics", "Tables", "Supplement"), "analysis_metadata.json"), analysis_meta)
+    save_json(os.path.join(ctx.output_dir("LegacyStructure", "Tables"), "analysis_metadata.json"), analysis_meta)
 
     group_atlases = supplement_cfg.get(
         "structure_atlases",
@@ -170,18 +174,19 @@ def main():
     exclude = supplement_cfg.get("exclude", [])
 
     DD, ND = build_structure_inputs(stat, group_atlases, exclude=exclude)
-    analyzer = StructureAnalyzer(DD, ND, group_names=group_names, logger=logger, condition_ids=stat.columns)
-    table_path = ctx.output_dir("Statistics", "Tables", "Supplement")
-    if len(stat.columns) < 2:
-        logger.warning("05 inference unavailable: at least two analysis conditions are required")
+    analyzer = LegacyStructureAnalyzer(DD, ND, group_names=group_names, logger=logger, condition_ids=stat.columns)
+    table_path = ctx.output_dir("LegacyStructure", "Tables")
+    if not run_inference or len(stat.columns) < 2:
         summaries = {}
         save_json(os.path.join(table_path, "inference_status.json"), {
-            "status": "unavailable", "reason": "At least two analysis conditions are required",
+            "status": "disabled" if not run_inference else "unavailable",
+            "reason": "Legacy condition-level inference is opt-in" if not run_inference else "At least two analysis conditions are required",
             "analysis": analysis_meta,
         })
     else:
         summaries = analyzer.summary()
-        save_json(os.path.join(table_path, "inference_status.json"), {"status": "complete"})
+        save_json(os.path.join(table_path, "inference_status.json"), {
+            "status": "complete", "scope": "legacy_condition_level_not_animal_level"})
     save_table(os.path.join(table_path, "observations.csv"), analyzer.df_rm, index=False)
     if summaries:
         save_table(os.path.join(table_path, "rm_anova_dd.csv"), summaries["RM-ANOVA DD"].anova_table)
@@ -190,7 +195,7 @@ def main():
         for term, result in summaries["MANOVA"].results.items():
             save_table(os.path.join(table_path, f"manova_{term}.csv"), result["stat"])
 
-    save_path = ctx.output_dir("Statistics")
+    save_path = ctx.output_dir("LegacyStructure", "Figures")
 
     dd_box_cfg = ctx.viz_style("stat_box", "supplement_dd_box")
     nd_box_cfg = ctx.viz_style("stat_box", "supplement_nd_box")
@@ -221,5 +226,4 @@ def main():
     )
 
 
-if __name__ == "__main__":
-    main()
+    return {"observations": analyzer.df_rm, "summaries": summaries, "output_path": ctx.output_dir("LegacyStructure")}

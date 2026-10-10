@@ -18,8 +18,9 @@ Main analysis stages:
 1. Preprocess raw OIS data with `scripts/01_preprocess.py`.
 2. Compute ROI-level FC matrices with `scripts/02_correlation.py`.
 3. Run individual identification and edge-contribution analysis with `scripts/03_identification.py`.
-4. Run statistical summaries with `scripts/04_statistics.py`.
-5. Optionally run supplementary DD/ND structure analysis with `scripts/05_supplement.py`.
+4. Run statistical summaries and per-mouse self-match advantage/percentile with `scripts/04_statistics.py`.
+
+Legacy DD/ND is outside the formal pipeline.
 
 Core capabilities:
 
@@ -75,10 +76,12 @@ python scripts/03_identification.py -c configs/default.yaml
 python scripts/04_statistics.py -c configs/default.yaml
 ```
 
-Optional supplementary analysis:
+Optional legacy DD/ND is available as a function (descriptive by default):
 
-```bash
-python scripts/05_supplement.py -c configs/default.yaml
+```python
+from srcs.utils.config import load_context
+from srcs.utils.legacy_structure import run_legacy_structure_analysis
+run_legacy_structure_analysis(load_context("configs/default.yaml"))
 ```
 
 For required input layout, masks, interactive atlas alignment, expected outputs, and practical notes, see [docs/workflow.md](docs/workflow.md).

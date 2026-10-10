@@ -153,46 +153,43 @@ data/output/<analysis_tag>/<dataset>/Identification/
 
 Then run `04_statistics.py` to summarize `statistics.pkl`.
 
-## 7. Run Supplementary Structure Analysis
+## 7. Per-mouse identifiability and optional legacy analysis
 
-`05_supplement.py` is optional and should be run after `03_identification.py` has produced:
+The formal pipeline ends at `04_statistics.py`. It reads the full similarity
+matrices saved by 03, verifies cohort/analysis metadata and consistency with
+`statistics.pkl`, and exports:
 
-```text
-data/output/<analysis_tag>/<dataset>/Identification/statistics.pkl
+- `Statistics/Tables/individual_identifiability.csv`: one row per mouse, atlas and analysis condition.
+- `Statistics/individual_identifiability_metadata.json`: definitions, scale, original condition selections and limitations.
+- `Statistics/IndividualIdentifiability/`: per-mouse plots of self-match advantage and percentile.
+
+Self-match advantage is the diagonal similarity minus the mean of that mouse's
+row/column nonself similarities. Self-match percentile is the average fraction
+of other candidates beaten in both directions; exact ties count as half a win.
+It is stored on a 0–1 scale (0.5 = 50%). Negative advantage is retained.
+Neither quantity is a disease severity score or a new inferential test. Shared
+references and candidate composition still matter.
+
+The complete `Identification/<condition>/Numeric/identification_<atlas>.pkl`
+files are required: the aggregate alone cannot recover matching percentiles.
+Missing files or mismatched cohorts fail explicitly instead of fabricating ranks.
+
+DD/ND has moved out of scripts into `srcs/utils/legacy_structure.py`:
+
+```python
+from srcs.utils.config import load_context
+from srcs.utils.legacy_structure import run_legacy_structure_analysis
+
+ctx = load_context("configs/default.yaml")
+result = run_legacy_structure_analysis(ctx)
 ```
 
-Run it in the main analysis environment:
-
-```bash
-conda activate ID-mRSFC-ISOI_suite2p
-python scripts/05_supplement.py -c configs/default.yaml
-```
-
-The script builds a structure-space summary from the identification results:
-
-- DD: diagonal dominance of the subject similarity matrix.
-- ND: normalized distance to the diagonal.
-- RM-ANOVA: compares DD and ND across configured groups.
-- MANOVA: jointly compares DD and ND across configured groups.
-
-Before running, confirm these config fields:
-
-- `analysis.statistics_file`: shared aggregate filename under Identification/.
-- `supplement.structure_atlases`: atlas conditions to include, using the same tags generated from `variables.Atlas`.
-- `supplement.structure_group_names`: display names paired one-to-one with `structure_atlases`.
-- `supplement.exclude`: rows to ignore, such as `AUDv`.
-- `visualization.supplement_dd_box`, `visualization.supplement_nd_box`, and `visualization.supplement_structure_space`: plot styles.
-
-Expected outputs are written under:
-
-```text
-data/output/<analysis_tag>/<dataset>/Statistics/
-|-- boxplot_DD.png
-|-- boxplot_ND.png
-`-- structure_space.png
-```
-
-Statistical tables are written to Statistics/Tables/ and Statistics/Tables/Supplement/ and logged. Actual condition labels and analysis axes accompany the outputs.
+This explicit function uses existing `supplement` configuration and writes to
+`LegacyStructure/Tables/` and `LegacyStructure/Figures/`. Importing it performs
+no analysis. Legacy condition-level inference is disabled by default; the
+explicit `run_inference=True` option preserves the old calculations solely for
+historical comparison, not animal-level disease inference. It is never called
+by the formal 01–04 pipeline. Existing historical output folders are not deleted.
 
 ## 8. Practical Notes
 

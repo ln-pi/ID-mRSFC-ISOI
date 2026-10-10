@@ -7,6 +7,7 @@ from scipy.stats import ttest_rel, wilcoxon, pearsonr
 from tqdm import tqdm
 
 from srcs.utils.utils import df_to_array
+from srcs.comp.statistics import paired_effect_summary, monte_carlo_pvalue_greater
 from srcs.utils.logger import setup_logger
 from srcs.vis.PlotSeries import PlotSeries
 
@@ -50,23 +51,44 @@ class Identify(object):
 
     @staticmethod
     def Calc_NetworkSimilarity(series1, series2):
+        """Compare aligned, symmetric half-average matrices (subject x ROI x ROI).
 
-        if not series1.shape == series2.shape:
-            logger.error("Input series should share a same shape (sub x node)!")
-            raise ValueError("Input series should share a same shape (sub x node)!")
-        
+        The caller first Fisher-z transforms each FC edge and averages within
+        each half (build_half_dataframe). Do not transform those edges again.
+        Here each undirected off-diagonal edge is counted once, Pearson r is
+        computed between edge vectors, then that *similarity* is Fisher-z
+        transformed and capped at +/-4 for compatibility with existing outputs.
+        ROI order must already match in both inputs. Diagonals are ignored.
+        """
+        series1 = np.asarray(series1, dtype=float)
+        series2 = np.asarray(series2, dtype=float)
+        if (series1.shape != series2.shape or series1.ndim != 3
+                or series1.shape[1] != series1.shape[2]):
+            raise ValueError("Inputs must have matching (subject, ROI, ROI) shapes.")
         sub_num, node_num, _ = series1.shape
-
-        iu = np.tril_indices(node_num, k=1)
+        if sub_num < 2 or node_num < 3:
+            raise ValueError("Similarity requires at least two subjects and three ROIs.")
+        iu = np.triu_indices(node_num, k=1)
+        vectors = []
+        for series in (series1, series2):
+            edges = series[:, iu[0], iu[1]]
+            reverse = series[:, iu[1], iu[0]]
+            if not np.isfinite(edges).all() or not np.isfinite(reverse).all():
+                raise ValueError("Off-diagonal edges must be finite.")
+            if not np.allclose(edges, reverse, rtol=1e-7, atol=1e-10):
+                raise ValueError("Connectivity matrices must be symmetric.")
+            if np.any(np.ptp(edges, axis=1) == 0):
+                raise ValueError("Constant edge vectors have undefined Pearson similarity.")
+            vectors.append(edges)
         sim_mat = np.zeros((sub_num, sub_num))
-
+        r_limit = np.tanh(4.0)
         for i in range(sub_num):
-            vec1 = series1[i, :, :][iu]
-
             for j in range(sub_num):
-                vec2 = series2[j, :, :][iu]
-                r = np.corrcoef(vec1, vec2)[0, 1]
-                sim_mat[i, j] = np.clip(np.arctanh(r), -4, 4) # Fisher z
+                r = np.corrcoef(vectors[0][i], vectors[1][j])[0, 1]
+                if not np.isfinite(r):
+                    raise ValueError("Non-finite Pearson similarity; check edge variation.")
+                # Equivalent cap, applied before arctanh to avoid infinities at +/-1.
+                sim_mat[i, j] = np.clip(np.arctanh(np.clip(r, -r_limit, r_limit)), -4, 4)
         
         Indiv = np.diag(sim_mat)
         Group = np.zeros(sub_num)
@@ -75,9 +97,8 @@ class Identify(object):
             target = np.delete(np.arange(sub_num), i)
             Group[i] = np.nanmean(np.concatenate([sim_mat[i, target], sim_mat[target, i]]))
         
-        relEffect = 1 - Group / Indiv
-
-        cohen_d = (Indiv - Group).mean() / (Indiv - Group).std(ddof=1)
+        relEffect = 1 - np.divide(Group, Indiv, out=np.full_like(Indiv, np.nan), where=Indiv != 0)
+        cohen_d = paired_effect_summary(Indiv, Group)["cohen_dz"]
 
         return sim_mat, Indiv, Group, relEffect, cohen_d
     
@@ -194,10 +215,14 @@ class Identify(object):
             "wilcoxon_statistic": stat_w,
             "wilcoxon_p_value": p_w,
             "pearson_correlation": r,
-            "pearson_p_value": p_r
+            "pearson_p_value": p_r,
+            **paired_effect_summary(self.Indiv, self.Group),
+            "effect_size_direction": "individual_minus_group",
         }
     
     def shuffle(self, iter=1000, figsize=(5, 4), dpi=180, save_path=None, show=True, log=False, tag="shuffle", plot_config=None, seed=None):
+        if isinstance(iter, (bool, np.bool_)) or not isinstance(iter, (int, np.integer)) or iter < 1:
+            raise ValueError("Shuffle iter must be a positive integer.")
         plot_config = dict(plot_config or {})
         figsize = tuple(plot_config.pop("figsize", figsize))
         dpi = plot_config.pop("dpi", dpi)
@@ -222,9 +247,13 @@ class Identify(object):
         r_acc = np.array(r_acc)
         c_acc = np.array(c_acc)
 
+        permutation = monte_carlo_pvalue_greater(real_acc, acc)
+        row_permutation = monte_carlo_pvalue_greater(real_r_acc, r_acc)
+        col_permutation = monte_carlo_pvalue_greater(real_c_acc, c_acc)
         logger.info(f"Real Accuracy = {real_acc:.4f}")
         logger.info(f"Shuffle Accuracy = {np.mean(acc):.4f} +/- {np.std(acc):.4f}")
-        logger.info(f"Permutation p-value = {np.mean(acc >= real_acc):.6f}")
+        logger.info(f"Permutation p-value (+1, greater) = {permutation['p_perm']:.6g}; "
+                    f"extreme={permutation['n_extreme']}/{permutation['n_iter']}")
 
         if save_path is None:
             save = False
@@ -261,7 +290,10 @@ class Identify(object):
             "shuffle_acc": (acc, r_acc, c_acc),
             "shuffle_mean": np.mean(acc),
             "shuffle_std": np.std(acc),
-            "p_perm": np.mean(acc >= real_acc),
+            **permutation,
+            "seed": seed,
+            "row_permutation": row_permutation,
+            "col_permutation": col_permutation,
         }
 
     def output(self, figsize=None, dpi=180, tag="default", save_path=None, show=True, log=False, paired_config=None, matrix_config=None):
@@ -273,7 +305,7 @@ class Identify(object):
                 "line": paired_config.pop("figsize", (4, 6)),
                 "mat": matrix_config.pop("figsize", (6, 6)),
             }
-        logger.info(f"Cohen's d: {self.cohen_d}")
+        logger.info(f"Paired Cohen's dz (ddof=1): {self.cohen_d}")
         logger.info(f"Similarity Matrix: min = {np.min(self.sim_mat)}, max = {np.max(self.sim_mat)}")
 
         if save_path is None:

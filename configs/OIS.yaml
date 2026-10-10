@@ -5,7 +5,7 @@
 # ---------- Info ----------
 paths:
   raw: "F:\\OIS_Awake_Mice\\"
-  processed: "D:\\data\\processed\\"
+  processed: "E:\\data\\processed\\"
   output: "data\\output\\"
   mask: "data\\mask\\"
   log: "logs\\OIS.log"
@@ -13,7 +13,7 @@ paths:
 variables:
   dataset: ""
   Week_ids: ["00w", "01w", "02w", "03w", "04w", "05w", "06w", "07w", "08w", "09w", "10w", "11w", "12w", "13w"]
-  Mouse_ids: ["N01", "N02", "N03", "N04", "N05", "N06", "N07", "N08", "N09", "N10", "N11", "N12", "N13", "N14"]
+  Mouse_ids: ["A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A09", "A10"]
   Run_ids: ["Run01", "Run02"]
   Atlas: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED", "AUDv"], ["AUDv"]]
 
