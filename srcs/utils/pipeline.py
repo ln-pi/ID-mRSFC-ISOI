@@ -23,8 +23,7 @@ def code_identity():
     root=Path(__file__).resolve().parents[1]
     digest=hashlib.sha256()
     for p in sorted(root.rglob('*.py')):
-        if 'snapshot' not in p.parts:
-            digest.update(p.relative_to(root).as_posix().encode());digest.update(p.read_bytes())
+        digest.update(p.relative_to(root).as_posix().encode());digest.update(p.read_bytes())
     return digest.hexdigest()
 
 
@@ -300,7 +299,7 @@ def run_analysis(ctx,stage='all',start='reliability',plot_workers=1):
 def main(argv=None,default_stage='all'):
     parser=argparse.ArgumentParser(description='ISOI longitudinal workflow. Run from project root for relative paths.')
     parser.add_argument('-c','--config',default='configs/default.yaml')
-    parser.add_argument('--stage',choices=STAGES+['all','legacy'],default=default_stage)
+    parser.add_argument('--stage',choices=STAGES+['all'],default=default_stage)
     parser.add_argument('--start',choices=STAGES,default='preprocess')
     parser.add_argument('--import-fc',metavar='SOURCE_OUTPUT')
     parser.add_argument('--plot-workers',type=int,default=4)
@@ -309,11 +308,7 @@ def main(argv=None,default_stage='all'):
     save_json(Path(ctx.output_path,'metadata/analysis_config.json'),dict(config=ctx.config,config_tag=ctx.analysis_tag,code_sha256=code_identity()))
     try:
         if args.import_fc:import_fc(ctx,args.import_fc)
-        if args.stage=='legacy':
-            from srcs.legacy.workflow import run_legacy
-            run_legacy(ctx)
-        else:
-            run_analysis(ctx,args.stage,args.start,plot_workers=args.plot_workers)
+        run_analysis(ctx,args.stage,args.start,plot_workers=args.plot_workers)
     except (ValueError,OSError) as exc:
         ctx.logger.error('Workflow stopped: %s',exc)
         return 1

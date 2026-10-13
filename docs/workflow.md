@@ -16,7 +16,6 @@ python run.py -c configs/Nseries.yaml --stage longitudinal
 python run.py -c configs/Nseries.yaml --stage report
 python run.py -c configs/Nseries.yaml --stage phenotype
 python run.py -c configs/Nseries.yaml --start preprocess
-python run.py -c configs/Nseries.yaml --stage legacy
 python run.py -c configs/Nseries.yaml --import-fc "源输出目录" --start reliability
 python -m unittest discover -s tests
 ```
@@ -42,7 +41,6 @@ results/reliability/            同周可靠性
 results/weekly/                 每周代表
 results/longitudinal/           跨周识别结果、队列与逐鼠表
 results/phenotype/              表型输入状态与对齐结果
-results/legacy/                 历史口径结果
 report/figures/                 identification、statistics、reliability 等图表
 report/tables/                  轨迹、结构指标及对照偏离汇总表
 report/summary.json             报告摘要
@@ -55,7 +53,7 @@ metadata/record_audit.csv        FC 输入审计
 
 旧目录不自动迁移或删除。清除 Correlation 以外的旧结果后，从 `python run.py --start fc` 开始重跑，重建 FC 执行记录后顺序运行后续阶段；已有有效 FC 缓存遵循原有校验规则复用。保留 FC 执行记录时，也可从 `--start reliability` 开始。
 
-`run.py --help` 列出各阶段、前置输入和启动示例。`--stage` 只执行一个阶段，`--start` 从指定阶段执行到主流程末尾；legacy 仅显式启动。
+`run.py --help` 列出各阶段、前置输入和启动示例。`--stage` 只执行一个阶段，`--start` 从指定阶段执行到主流程末尾。
 
 ## 版本控制范围
 

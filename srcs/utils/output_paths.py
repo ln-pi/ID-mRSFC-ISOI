@@ -7,7 +7,6 @@ DIRECTORIES = {
     'Weekly': 'results/weekly',
     'Identification': 'results/longitudinal',
     'Phenotype': 'results/phenotype',
-    'Legacy': 'results/legacy',
     'Statistics': 'report',
     'Manifests': 'metadata/manifests',
     'BatchReports': 'metadata/batch_reports',

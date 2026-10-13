@@ -24,7 +24,7 @@ python run.py -c configs/Nseries.yaml --start reliability
 - [图表报告说明](docs/visualization_report.md)
 - [配置说明](docs/config.md)
 
-目录：run.py 统一入口，configs/ 配置，srcs/ 功能模块，tests/ 测试，docs/ 文档。原始预处理仍包含人工配准，需显式指定 --start preprocess。历史算法与静态快照保留在 srcs/legacy/。
+目录：run.py 统一入口，configs/ 配置，srcs/ 功能模块，tests/ 测试，docs/ 文档。原始预处理仍包含人工配准，需显式指定 --start preprocess。当前分支仅保留纵向分析流程；历史算法可从 Git 历史或 env_suite2p_combined 分支查看。
 
 输出目录统一为 `Correlation/`（保持原样）、`results/`（计算结果）、`report/`（图表与汇总表）、`metadata/`（配置、审计与清单）。删除 Correlation 以外的旧结果后，请用 `python run.py --start fc` 重建 FC 审计并运行后续阶段。
 

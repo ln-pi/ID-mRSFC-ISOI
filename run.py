@@ -8,7 +8,6 @@ Stages:
   longitudinal FC -> between-week identification and edge contributions
   report       saved reliability/longitudinal results -> tables and figures
   phenotype    FC + supplied observations/events -> phenotype alignment
-  legacy       FC -> optional historical half-group analysis
 
 Examples:
   python run.py                           # Aseries and Nseries, fc onward
@@ -16,7 +15,6 @@ Examples:
   python run.py -c configs/Aseries.yaml --stage fc
   python run.py --start reliability       # requires FC matrices AND FC audit
   python run.py --stage report            # requires saved numerical results
-  python run.py --stage legacy
   python run.py --dry-run                 # inspect inputs and execution plan
 
 --stage executes one stage; --start executes that stage and all later main stages.
@@ -43,7 +41,7 @@ def main(argv=None):
     configs.add_argument('-c', '--config', help='One configuration')
     configs.add_argument('--configs', nargs='+', help='Configurations executed sequentially (default: Aseries and Nseries)')
     selection = parser.add_mutually_exclusive_group()
-    selection.add_argument('--stage', choices=(*STAGES, 'legacy'), help='Execute only this stage')
+    selection.add_argument('--stage', choices=STAGES, help='Execute only this stage')
     selection.add_argument('--start', choices=STAGES, help='Execute this and all following stages (default: fc)')
     parser.add_argument('--dry-run', action='store_true', help='Validate inputs and save a run plan')
     parser.add_argument('--report-root', default='reports/automatic')

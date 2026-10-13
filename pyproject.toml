@@ -7,7 +7,7 @@ name = "ID-mRSFC-ISOI"
 version = "0.2.0"
 description = "Longitudinal mouse resting-state connectivity workflow"
 requires-python = ">=3.13"
-dependencies = ["numpy", "pandas", "scipy", "PyYAML", "Pillow", "matplotlib", "seaborn", "statsmodels", "tqdm"]
+dependencies = ["numpy", "pandas", "scipy", "PyYAML", "Pillow", "matplotlib", "seaborn", "tqdm"]
 
 [project.optional-dependencies]
 preprocessing = ["suite2p>=1.1", "opencv-python-headless", "tifffile", "PyQt6"]
@@ -22,7 +22,6 @@ py-modules = ["run"]
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["srcs*"]
-exclude = ["srcs.legacy.snapshot*"]
 namespaces = false
 
 [tool.setuptools.package-data]

@@ -89,7 +89,7 @@ def run_batch(configs, *, project_root=None, start='fc', stage=None, dry_run=Fal
         raise ValueError('Unknown start stage: ' + start)
     project_root = Path(project_root or Path(__file__).resolve().parents[2]).resolve()
     execute = execute or execute_stage
-    if stage is not None and stage not in (*STAGES, 'legacy'):
+    if stage is not None and stage not in STAGES:
         raise ValueError('Unknown stage: ' + stage)
     stages = (stage,) if stage else STAGES[STAGES.index(start):]
     start = stages[0]

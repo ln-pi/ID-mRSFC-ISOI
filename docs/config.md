@@ -31,4 +31,6 @@ phenotype:
 
 表型模板在 `configs/phenotype_template.csv`，字段 mouse/date/measure/value；事件模板在 `configs/events_template.csv`，字段 mouse/entry_date/event_date/censored，censored 为 0 或 1，删失个体 event_date 表示最后观察日。表型按 mouse、测量名取采集日之前最近、容差范围内的测量，避免使用未来数据。真实采集日缺失时不进行伪日期匹配。事件接口仅验证并输出数据，不自动拟合模型。
 
-`analysis.split_axis`、`analysis.selection_mode`、ID 的 group_mode/repeat_id 仅影响显式 `--stage legacy`；主跨周分析不随机分周。保留这些属性是为了兼容补充分析，而配置哈希仍覆盖所有字段。
+当前主流程不随机分周，历史分半入口和实现已移除。配置文件保持原样：`analysis.split_axis`、`analysis.selection_mode`、`ID.group_mode/repeat_id`、`Edge.seed/repeat` 不再控制任何历史分析。为保持既有结果位置，输出标签仍使用原配置哈希和命名规则（包括 group_mode、repeat_id、Edge.seed），这些名称不表示主流程执行随机分半或 Edge 重复采样。`ID.session_seed` 继续控制置换随机数；Phi/DP 使用固定周对。`analysis.statistics_file` 及 supplement 中当前报告使用的绘图设置保留。
+
+本次代码清理不迁移已有数据和结果目录。阶段清单包含代码哈希，因此再次执行数值阶段时可能重新计算；report 仍按已保存数值的配置、输入及输出哈希校验来源。
