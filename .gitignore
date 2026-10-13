@@ -1,3 +1,13 @@
-**/__pycache__/*
-data
-logs
+__pycache__/
+/data/*
+!/data/mask/
+logs/
+reports/
+/tests/
+
+# Keep project documentation; exclude local handover, work and validation records.
+/docs/*
+!/docs/config.md
+!/docs/workflow.md
+!/docs/automatic_workflow.md
+!/docs/visualization_report.md

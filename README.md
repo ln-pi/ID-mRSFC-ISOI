@@ -1,116 +1,33 @@
 # ID-mRSFC-ISOI
 
-This repository contains a Python workflow for mouse resting-state functional connectivity analysis from intrinsic signal optical imaging (ISOI/OIS) data. The pipeline converts raw OIS binary recordings to TIFF stacks, performs Suite2p motion correction and atlas registration, extracts ROI-level time series, computes functional connectivity (FC) matrices, and evaluates individual-level network identifiability from mRSFC patterns.
+小鼠静息态连接的纵向 ISOI 分析流程：同周可靠性 → 每周代表连接 → 跨周个体识别 → 统一图表报告 → 表型接口。
 
-The code is organized as research scripts rather than a packaged command-line application. Most runtime behavior is controlled by YAML configuration files in `configs/`.
+统一入口为项目根目录 `run.py`，原 scripts/ 编号入口和 PowerShell 包装器已合并。使用包含项目依赖的 Python 环境运行：
 
-## Documentation
-
-- Detailed workflow: [docs/workflow.md](docs/workflow.md)
-- Configuration reference: [docs/config.md](docs/config.md)
-- Citation metadata: [CITATION.cff](CITATION.cff)
-- License: [LICENSE](LICENSE)
-
-## Overview
-
-Main analysis stages:
-
-1. Preprocess raw OIS data with `scripts/01_preprocess.py`.
-2. Compute ROI-level FC matrices with `scripts/02_correlation.py`.
-3. Run individual identification and edge-contribution analysis with `scripts/03_identification.py`.
-4. Run statistical summaries with `scripts/04_statistics.py`.
-5. Optionally run supplementary DD/ND structure analysis with `scripts/05_supplement.py`.
-
-Core capabilities:
-
-- OIS200-style raw binary reading.
-- TIFF conversion and Suite2p motion correction.
-- Interactive atlas alignment.
-- dR/R, detrending, global signal regression, filtering, and downsampling.
-- ROI time-series extraction and FC matrix estimation.
-- Individual identification, permutation testing, edge contribution, and statistical plotting.
-
-Repository layout:
-
-```text
-ID-mRSFC-ISOI/
-|-- configs/                 # YAML runtime configs
-|-- data/                    # Local raw, mask, processed, and output data
-|-- docs/                    # Workflow and config documentation
-|-- logs/                    # Runtime logs
-|-- notebooks/               # Exploratory notebooks
-|-- scripts/                 # Numbered pipeline scripts
-|-- srcs/                    # Core Python modules
-|-- environment.yaml         # Main analysis environment
-|-- neuro_suite2p_env.yaml   # Preprocessing environment
-|-- CITATION.cff
-|-- LICENSE
-`-- README.md
+```powershell
+cd F:\Projects\ID-mRSFC-ISOI_refined
+# 默认顺序运行 Aseries、Nseries，从现有 FiltDRR 开始
+python run.py
+# 两组已有数值结果，仅补绘全部报告图表
+python run.py --stage report
+# 单组、单阶段或接续运行
+python run.py -c configs/Nseries.yaml --stage longitudinal
+python run.py -c configs/Nseries.yaml --start reliability
 ```
 
-Generated data and logs are not version-controlled.
+入口自动切换到项目根目录，支持从其他工作目录用绝对路径启动；无需安装包即可运行。可选安装 `python -m pip install --no-deps --no-build-isolation -e .` 后，isoi 使用同一套参数；已经安装旧入口的环境需要重新安装才能更新命令。
 
-## Quick Start
+所有分析图表由 **report** 阶段生成，包括 FC 热图、识别相似度矩阵、配对图、置换直方图、Phi/DP 环形图与矩阵、箱线图、均值误差曲线、全周对概览、DD/ND 及结构空间、可靠性和逐鼠轨迹。report/figure_index.json 记录图表和校验值；缺图或损坏时再次执行 report 可修复。单独补图要求当前配置的 reliability、longitudinal 数值结果及其阶段清单完整，不重算置换。
 
-Create both environments:
+- [运行说明](docs/workflow.md)
+- [批量自动流程](docs/automatic_workflow.md)
+- [图表报告说明](docs/visualization_report.md)
+- [配置说明](docs/config.md)
 
-```bash
-conda env create -f neuro_suite2p_env.yaml
-conda env create -f environment.yaml
-```
+目录：run.py 统一入口，configs/ 配置，srcs/ 功能模块，tests/ 测试，docs/ 文档。原始预处理仍包含人工配准，需显式指定 --start preprocess。历史算法与静态快照保留在 srcs/legacy/。
 
-Prepare your active config before running. `configs/default.yaml` is the recommended relative-path template; `configs/OIS.yaml` contains a lab-machine raw-data path example. See [docs/config.md](docs/config.md) for all fields.
+输出目录统一为 `Correlation/`（保持原样）、`results/`（计算结果）、`report/`（图表与汇总表）、`metadata/`（配置、审计与清单）。删除 Correlation 以外的旧结果后，请用 `python run.py --start fc` 重建 FC 审计并运行后续阶段。
 
-Run preprocessing in the Suite2p environment:
+Git 仅纳入源代码、配置、项目使用说明和 `data/mask/`；本地测试、工作记录、校验报告及其他数据不纳入。
 
-```bash
-conda activate neuro_suite2p_env
-python scripts/01_preprocess.py -c configs/default.yaml
-```
-
-Run downstream analysis in the main environment:
-
-```bash
-conda activate ID-mRSFC-ISOI
-python scripts/02_correlation.py -c configs/default.yaml
-python scripts/03_identification.py -c configs/default.yaml
-python scripts/04_statistics.py -c configs/default.yaml
-```
-
-Optional supplementary analysis:
-
-```bash
-python scripts/05_supplement.py -c configs/default.yaml
-```
-
-For required input layout, masks, interactive atlas alignment, expected outputs, and practical notes, see [docs/workflow.md](docs/workflow.md).
-
-## Known Issues
-
-Some implementation details are intentionally left unchanged for now:
-
-- `keepna=True` in raw binary frame reading may not preserve missing frames as NaN because adjusted frames are stored in an unsigned integer array.
-- Missing `Chamber_Mask.png` currently raises an indirect image-read error instead of a targeted file-not-found message.
-- `srcs/prep/suite2p.py` retains Suite2p registration keys `1Preg` and `phasecorr`; confirm these against the exact Suite2p runtime before changing registration behavior.
-- `srcs/atlas/Atlas_Mask.py::Get_Func_Mask()` appears to contain a non-main-path indexing issue and should be checked before using that helper directly.
-
-See [docs/workflow.md](docs/workflow.md) for runtime prerequisites and [docs/config.md](docs/config.md) for configuration details.
-
-## Data Availability
-
-Raw experimental data and lab-internal core code are not publicly distributed with this repository. Please contact the authors for data access or collaboration requests.
-
-## Citation
-
-If you use this repository, cite the software metadata in [CITATION.cff](CITATION.cff) and the core references below as appropriate.
-
-Core literature:
-
-- Finn, E. S., et al. (2015). Functional connectome fingerprinting: identifying individuals using patterns of brain connectivity. Nature Neuroscience. DOI: [10.1038/nn.4135](https://doi.org/10.1038/nn.4135)
-- White, B. R., et al. (2011). Imaging of functional connectivity in the mouse brain. PLOS ONE. DOI: [10.1371/journal.pone.0016322](https://doi.org/10.1371/journal.pone.0016322)
-- Bergmann, E., et al. (2020). Individual variability in functional connectivity architecture of the mouse brain. Communications Biology. DOI: [10.1038/s42003-020-01472-5](https://doi.org/10.1038/s42003-020-01472-5)
-
-Code references:
-
-- `circularGraph` visualization is adapted from [paul-kassebaum-mathworks/circularGraph](https://github.com/paul-kassebaum-mathworks/circularGraph).
-- Additional lab core code is internal and not publicly released.
+PowerShell 实时显示各阶段进度及完成状态。Aseries、Nseries 的日志分别按配置写入 `logs/Aseries.log`、`logs/Nseries.log`，每组所有阶段顺序追加；结束时显示日志路径并保留 warning 汇总。`reports/automatic/` 只保存批量执行摘要，不再保存阶段日志。

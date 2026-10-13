@@ -1,0 +1,237 @@
+# Run from project root. Relative paths deliberately preserved.
+# analysis.split_axis/selection_mode apply only to legacy half-group analysis.
+paths:
+  raw: data\raw\
+  processed: F:\data\processed\
+  output: data\output\
+  mask: data\mask\
+  log: logs\Aseries.log
+variables:
+  dataset: ''
+  Week_ids:
+  - 00w
+  - 01w
+  - 02w
+  - 03w
+  - 04w
+  - 05w
+  - 06w
+  - 07w
+  - 08w
+  - 09w
+  - 10w
+  - 11w
+  - 12w
+  - 13w
+  Mouse_ids:
+  - A01
+  - A02
+  - A03
+  - A04
+  - A05
+  - A06
+  - A07
+  - A08
+  - A09
+  - A10
+  Run_ids:
+  - Run01
+  - Run02
+  Atlas:
+  - - SM
+    - VIS
+    - AUD
+  - - PF
+    - LAT
+    - MED
+    - AUDv
+  - - AUDv
+preprocess:
+  keepna: false
+  resume: true
+  signal:
+    input_fps: 30
+    output_fps: 5
+    highpass: 0.009
+    lowpass: 0.08
+correlation:
+  resume: true
+analysis:
+  split_axis: week
+  selection_mode: single
+  statistics_file: statistics.pkl
+ID:
+  completeness_mode: strict
+  group_mode: random
+  repeat_id: null
+  session_seed: 42
+  shuffle: true
+  n_iter: 1000
+Edge:
+  seed: 42
+  repeat: 50
+  threshold: 99
+  gap: 0.25
+  cross_only: false
+  save_mat: true
+supplement:
+  structure_atlases:
+  - - SM
+    - VIS
+    - AUD
+  - - PF
+    - LAT
+    - MED
+    - AUDv
+  - - AUDv
+  structure_group_names:
+  - Association
+  - Sensory excluding AUDv
+  - Whole Brain excluding AUDv
+  exclude: []
+visualization:
+  defaults:
+    dpi: 180
+    render_dpi: 300
+    show: false
+    save: true
+    log: false
+  fc_heatmap:
+    figsize:
+    - 8
+    - 8
+    center: 0
+    vmin: -1
+    vmax: 1
+    square: true
+    cmap: coolwarm
+    cbar: true
+    label_fontsize_small: 10
+    label_fontsize_scale: 300
+  id_shuffle_hist:
+    figsize:
+    - 5
+    - 4
+    bins: 20
+    range:
+    - 0
+    - 1
+    facecolor: lightgray
+    edgecolor: dimgray
+    arrow_color: red
+    show_mean_arrow: true
+    mean_arrow_color: gray
+    xlabel: Identification Accuracy
+    ylabel: Count
+    title: Shuffle Distribution
+    arrow_text_format: real={:.4f}
+    mean_text_format: shuffle={:.4f}
+  id_paired:
+    figsize:
+    - 4
+    - 6
+    linecolor: gray
+    alpha: 0.5
+    linewidth: 1.5
+    meancolor: red
+    meanwidth: 3
+    xticklabels:
+    - Group
+    - Individual
+    ylabel: Network Similarity
+  id_similarity_matrix:
+    figsize:
+    - 6
+    - 6
+    title: Similarity Matrix
+    cmap: inferno
+    cbar: true
+    axis: true
+    vmin_default: 1.2
+    vmax_default: 3.0
+    vmin_association: 2.0
+    vmax_association: 3.5
+    tick_fontsize: 10
+  edge_phi:
+    node_color_mode: fixed
+    edge_color_mode: fixed
+    edge_fixed_color: blue
+    edge_width_mode: fixed
+  edge_dp:
+    node_color_mode: fixed
+    edge_color_mode: fixed
+    edge_fixed_color: red
+    edge_width_mode: fixed
+  stat_box:
+    figsize:
+    - 4
+    - 4
+    box_width: 0.1
+    box_alpha: 0.7
+    box_color: null
+    showfliers: false
+    fontsize: 7
+    rotation: 0
+    grid: false
+    hide_ns: true
+  stat_rel_effect_box:
+    show_legend: false
+    show_sub_label: true
+  stat_group_indiv_box:
+    group_gap: 2
+  stat_mean_error:
+    figsize:
+    - 8
+    - 6
+    error_type: sem
+    use_fill: false
+    labels:
+    - Group
+    - Individual
+    show_diff: true
+    diff_mode: gradient
+    diff_ylabel: Gradient
+    xlabel: Trials
+    ylabel: Value
+  supplement_dd_box:
+    figsize:
+    - 5
+    - 4
+    ylabel: DD
+    title: Diagonal Dominance (DD)
+    show_legend: false
+    show_sub_label: true
+  supplement_nd_box:
+    figsize:
+    - 5
+    - 4
+    ylabel: ND
+    title: Normalized Distance (ND)
+    show_legend: false
+    show_sub_label: true
+  supplement_structure_space:
+    figsize:
+    - 6
+    - 5
+    xlabel: DD
+    ylabel: ND
+    title: Structure Space
+    s: 60
+    alpha: 0.9
+    legend: true
+longitudinal:
+  comparisons:
+  - observation_start
+  - adjacent
+  - all_pairs
+  early_weeks: []
+  late_weeks: []
+  control_representatives: null
+study:
+  group: unspecified
+  acquisition_dates: {}
+  missing_reasons: {}
+phenotype:
+  observations: null
+  events: null
+  tolerance_days: 7

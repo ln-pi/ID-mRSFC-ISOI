@@ -1,16 +1,14 @@
 {
-    "version": "0.2.0",
-    "configurations":[
-        {
-            "name": "Python Current File",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${file}",
-            "cwd": "${workspaceFolder}",
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}"
-            },
-            "console": "integratedTerminal",
-        }
-    ]
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "ISOI current stage",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/run.py",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "args": ["-c", "configs/Nseries.yaml", "--stage", "report"]
+    }
+  ]
 }
