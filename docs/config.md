@@ -1,7 +1,7 @@
 # Configuration Reference
 
-Run scripts from the repository root with `-c configs/OIS.yaml` or another config.
-Relative paths remain relative to the launch directory.
+Use `python run.py -c configs/Aseries.yaml` or another config. With no config argument, Aseries and Nseries execute sequentially.
+Relative config and data paths resolve against the P1 project root, independently of the launch directory.
 
 ## Physical recording dimensions
 
@@ -34,7 +34,7 @@ run/mouse/week or week/mouse/run processed folders. No data directory is renamed
 01 step 5 writes the same name. Former filenames are ignored.
 Multiple matching files for one recording are an error; duplicate sources are
 never silently selected. Missing/conflicting/corrupt records are logged and
-recorded in BatchReports while remaining records continue.
+recorded in metadata/batch_reports while remaining records continue. Non-missing execution failures stop the workflow after that stage.
 
 01 creates new outputs at processed/<dataset>/<week>/<mouse>/<run>/, or resumes
 the single existing recording folder when present. Suite2p stays inside that
@@ -196,3 +196,15 @@ Visualization presets keep plotting style out of the analysis scripts.
 - `supplement_structure_space`: DD-ND structure-space scatter style.
 
 Script-level presets are merged with plot-specific runtime values such as output names, labels, and data-dependent axis ticks.
+
+
+## P2 FC reuse and output layout
+
+Use `--start identification --import-fc SOURCE_OUTPUT` with `-c` to import P2 FC tables. Source output root or Correlation folder is accepted; raw/processed inputs are not required for imported FC analysis. The complete parsed config still determines analysis_tag. Relative path resolution does not rewrite the config hash. Output categories are Correlation, results/combined, report, and metadata; see [workflow](workflow.md).
+
+
+## Configuration templates and similarity color scales
+
+`Aseries.yaml` and `Nseries.yaml` are runnable configurations. `default.yaml` retains the same property tree with all leaf values empty (YAML null); fill it before use. The former OIS.yaml has been removed. Legacy numbered scripts default to Aseries.yaml.
+
+`visualization.id_similarity_matrix.limits_by_atlas` sets fixed Fisher-z similarity limits shared across A/N and Run01/Run02: SM_VIS_AUD `[1.3, 2.9]`, PF_LAT_MED_AUDv `[0.9, 2.7]`, AUDv `[1.0, 2.8]`. Raw FC heatmaps retain `[-1, 1]`. Full-config hashing means these visualization changes produce new output tags. Existing figures are not rewritten automatically.

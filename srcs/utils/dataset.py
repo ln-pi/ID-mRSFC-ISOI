@@ -70,7 +70,10 @@ def select_complete_cohort(ctx):
         raise ValueError("At least one atlas is required")
     # Validate public options before reading data; cover always operates on weeks.
     _ = ctx.split_axis, ctx.selection_mode
-    reports = list((Path(ctx.output_path) / "BatchReports").glob("02_correlation_*.json"))
+    from srcs.utils.output_paths import fc_reports
+    from srcs.utils.fc_import import verify_import
+    verify_import(ctx)
+    reports = fc_reports(ctx.output_path)
     if not reports:
         raise FileNotFoundError("03 requires a current-config 02_correlation_*.json BatchReport")
     report_path = max(reports, key=lambda p: (p.stat().st_mtime_ns, p.name))

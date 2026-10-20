@@ -3,6 +3,11 @@ import hashlib
 import json
 from dataclasses import dataclass
 from typing import Any
+from pathlib import Path
+from argparse import Namespace
+from srcs.utils.output_paths import output_parts
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 import yaml
 
@@ -18,7 +23,7 @@ class RunContext:
 
     @property
     def paths(self):
-        return self.config["paths"]
+        return {k: str((PROJECT_ROOT / v).resolve()) for k, v in self.config["paths"].items()}
 
     @property
     def variables(self):
@@ -141,11 +146,11 @@ class RunContext:
 
     @property
     def statistics_path(self):
-        return os.path.join(self.output_path, "Identification", self.statistics_file)
+        return os.path.join(self.output_dir("Identification", create=False), self.statistics_file)
 
     def save_analysis_metadata(self, selection=None):
         from srcs.utils.results import save_json
-        save_json(os.path.join(self.output_path, "analysis_config.json"), {
+        save_json(os.path.join(self.output_dir("Metadata"), "analysis_config.json"), {
             "config": self.config, "split_axis": self.split_axis,
             "selection_mode": self.selection_mode, "session_seed": self.session_seed,
             "week_order": self.weeks, "run_order": self.runs,
@@ -182,7 +187,7 @@ class RunContext:
         return self.viz("defaults").get("render_dpi", self.figure_dpi())
 
     def output_dir(self, *parts, create=True):
-        path = os.path.join(self.output_path, *parts)
+        path = os.path.join(self.output_path, *output_parts(parts))
         if create:
             os.makedirs(path, exist_ok=True)
         return path
@@ -204,15 +209,14 @@ def load_config(path):
 
 
 def load_context(config_path=None, create_dirs=True):
-    args = parse_args()
-    if config_path is not None:
-        args.config = config_path
+    args = parse_args() if config_path is None else Namespace(config=str(config_path))
+    args.config = str((PROJECT_ROOT / args.config).resolve())
 
     config = load_config(args.config)
     if config is None:
         raise ValueError("Config is empty (None). Exiting.")
 
-    logger = setup_logger(config["paths"]["log"])
+    logger = setup_logger(str((PROJECT_ROOT / config["paths"]["log"]).resolve()))
     ctx = RunContext(args=args, config=config, logger=logger)
 
     if create_dirs:

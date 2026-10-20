@@ -15,7 +15,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Initial config inputting...")
     parser.add_argument(
         "-c", "--config",
-        default="configs/OIS.yaml",
+        default="configs/Aseries.yaml",
         help="Path to the config yaml file"
     )
     return parser.parse_args()

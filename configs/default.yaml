@@ -1,183 +1,186 @@
+# Blank configuration template. Fill every required value before running.
+# Property names and nesting match Aseries.yaml and Nseries.yaml.
 # ==================================================
 # Project Configuration
 # ==================================================
 
 # ---------- Info ----------
 paths:
-  raw: "data\\raw\\"
-  processed: "data\\processed\\"
-  output: "data\\output\\"
-  mask: "data\\mask\\"
-  log: "logs\\default.log"
+  raw:
+  processed:
+  output:
+  mask:
+  log:
 
 variables:
-  dataset: "WT"
-  Week_ids: ["00w", "01w", "02w", "03w"]
-  Mouse_ids: ["A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A09", "A10"]
-  Run_ids: ["Run01", "Run02"]
-  Atlas: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED", "AUDv"], ["AUDv"]]
+  dataset:
+  Week_ids:
+  Mouse_ids:
+  Run_ids:
+  Atlas:
 
 # ---------- Preprocess ----------
 preprocess:
-  keepna: False
-  resume: True  # validate completed step outputs before skipping
+  keepna:
+  resume: # validate completed step outputs before skipping
   bin:
-    time: 6
-    space: 4
+    time:
+    space:
   filter:
-    highpass: 0.005
-    lopass: 1
-    fps: 5
-  robust: 2
+    highpass:
+    lopass:
+    fps:
+  robust:
 
 # ---------- Correlation ----------
 correlation:
-  resume: True
+  resume:
 
 # ---------- Analysis ----------
 analysis:
-  split_axis: run  # group runs; week groups weeks instead
-  selection_mode: cumulative  # process the opposite axis singly or cumulatively
-  statistics_file: "statistics.pkl"  # shared by 03, 04 and 05
+  split_axis: # group runs; week groups weeks instead
+  selection_mode: # process the opposite axis singly or cumulatively
+  statistics_file: # shared by 03, 04 and 05
 
 ID:
-  completeness_mode: strict  # strict: all weeks/runs; cover: maximum complete mouse x contiguous week area
-  group_mode: random  # sequential or random
-  repeat_id: null  # ID or one-based position on the split axis; odd sequential only
-  session_seed: 42  # reproducible random axis split
-  shuffle: True
-  n_iter: 1000
+  completeness_mode: # strict: all weeks/runs; cover: maximum complete mouse x contiguous week area
+  group_mode: # sequential or random
+  repeat_id: # ID or one-based position on the split axis; odd sequential only
+  session_seed: # reproducible random axis split
+  shuffle:
+  n_iter:
 
 Edge:
-  seed: 42
-  repeat: 50
-  threshold: 99
-  gap: 0.25
-  cross_only: False
-  save_mat: True
+  seed:
+  repeat:
+  threshold:
+  gap:
+  cross_only:
+  save_mat:
 
 supplement:
-  structure_atlases: [["SM", "VIS", "AUD"], ["PF", "LAT", "MED", "AUDv"], ["AUDv"]]
-  structure_group_names: ["Association", "Sensory excluding AUDv", "Whole Brain excluding AUDv"]
-  exclude: []
+  structure_atlases:
+  structure_group_names:
+  exclude:
 
 # ---------- Visualization ----------
 visualization:
   defaults:
-    dpi: 180
-    render_dpi: 300
-    show: False
-    save: True
-    log: False
+    dpi:
+    render_dpi:
+    show:
+    save:
+    log:
 
   fc_heatmap:
-    figsize: [8, 8]
-    center: 0
-    vmin: -1
-    vmax: 1
-    square: True
-    cmap: "coolwarm"
-    cbar: True
-    label_fontsize_small: 10
-    label_fontsize_scale: 300
+    figsize:
+    center:
+    vmin:
+    vmax:
+    square:
+    cmap:
+    cbar:
+    label_fontsize_small:
+    label_fontsize_scale:
 
   id_shuffle_hist:
-    figsize: [5, 4]
-    bins: 20
-    range: [0, 1]
-    facecolor: "lightgray"
-    edgecolor: "dimgray"
-    arrow_color: "red"
-    show_mean_arrow: True
-    mean_arrow_color: "gray"
-    xlabel: "Identification Accuracy"
-    ylabel: "Count"
-    title: "Shuffle Distribution"
-    arrow_text_format: "real={:.4f}"
-    mean_text_format: "shuffle={:.4f}"
+    figsize:
+    bins:
+    range:
+    facecolor:
+    edgecolor:
+    arrow_color:
+    show_mean_arrow:
+    mean_arrow_color:
+    xlabel:
+    ylabel:
+    title:
+    arrow_text_format:
+    mean_text_format:
 
   id_paired:
-    figsize: [4, 6]
-    linecolor: "gray"
-    alpha: 0.5
-    linewidth: 1.5
-    meancolor: "red"
-    meanwidth: 3
-    xticklabels: ["Group", "Individual"]
-    ylabel: "Network Similarity"
+    figsize:
+    linecolor:
+    alpha:
+    linewidth:
+    meancolor:
+    meanwidth:
+    xticklabels:
+    ylabel:
 
   id_similarity_matrix:
-    figsize: [6, 6]
-    title: "Similarity Matrix"
-    cmap: "inferno"
-    cbar: True
-    axis: True
-    vmin_default: 1.2
-    vmax_default: 3.0
-    vmin_association: 2.0
-    vmax_association: 3.5
-    tick_fontsize: 10
+    figsize:
+    title:
+    cmap:
+    cbar:
+    axis:
+    # Shared by A/N and both Runs; network similarity is in Fisher-z units.
+    limits_by_atlas:
+      SM_VIS_AUD:
+      PF_LAT_MED_AUDv:
+      AUDv:
+    tick_fontsize:
 
   edge_phi:
-    node_color_mode: "fixed"
-    edge_color_mode: "fixed"
-    edge_fixed_color: "blue"
-    edge_width_mode: "fixed"
+    node_color_mode:
+    edge_color_mode:
+    edge_fixed_color:
+    edge_width_mode:
 
   edge_dp:
-    node_color_mode: "fixed"
-    edge_color_mode: "fixed"
-    edge_fixed_color: "red"
-    edge_width_mode: "fixed"
+    node_color_mode:
+    edge_color_mode:
+    edge_fixed_color:
+    edge_width_mode:
 
   stat_box:
-    figsize: [4, 4]
-    box_width: 0.1
-    box_alpha: 0.7
+    figsize:
+    box_width:
+    box_alpha:
     box_color:
-    showfliers: False
-    fontsize: 7
-    rotation: 0
-    grid: False
-    hide_ns: True
+    showfliers:
+    fontsize:
+    rotation:
+    grid:
+    hide_ns:
 
   stat_rel_effect_box:
-    show_legend: False
-    show_sub_label: True
+    show_legend:
+    show_sub_label:
 
   stat_group_indiv_box:
-    group_gap: 2
+    group_gap:
 
   stat_mean_error:
-    figsize: [8, 6]
-    error_type: "sem"
-    use_fill: False
-    labels: ["Group", "Individual"]
-    show_diff: True
-    diff_mode: "gradient"
-    diff_ylabel: "Gradient"
-    xlabel: "Trials"
-    ylabel: "Value"
+    figsize:
+    error_type:
+    use_fill:
+    labels:
+    show_diff:
+    diff_mode:
+    diff_ylabel:
+    xlabel:
+    ylabel:
 
   supplement_dd_box:
-    figsize: [5, 4]
-    ylabel: "DD"
-    title: "Diagonal Dominance (DD)"
-    show_legend: False
-    show_sub_label: True
+    figsize:
+    ylabel:
+    title:
+    show_legend:
+    show_sub_label:
 
   supplement_nd_box:
-    figsize: [5, 4]
-    ylabel: "ND"
-    title: "Normalized Distance (ND)"
-    show_legend: False
-    show_sub_label: True
+    figsize:
+    ylabel:
+    title:
+    show_legend:
+    show_sub_label:
 
   supplement_structure_space:
-    figsize: [6, 5]
-    xlabel: "DD"
-    ylabel: "ND"
-    title: "Structure Space"
-    s: 60
-    alpha: 0.9
-    legend: True
+    figsize:
+    xlabel:
+    ylabel:
+    title:
+    s:
+    alpha:
+    legend:

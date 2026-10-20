@@ -1,115 +1,60 @@
-# ID-mRSFC-ISOI
+# ID-mRSFC-ISOI — P1 Combined
 
-This repository contains a Python workflow for mouse resting-state functional connectivity analysis from intrinsic signal optical imaging (ISOI/OIS) data. The pipeline converts raw OIS binary recordings to TIFF stacks, performs Suite2p motion correction and atlas registration, extracts ROI-level time series, computes functional connectivity (FC) matrices, and evaluates individual-level network identifiability from mRSFC patterns.
+ISOI 小鼠皮层功能连接的跨周汇总个体识别分析。数据结构始终为 week × mouse × run；默认在每个 Run 内按相同随机种子划分周次，比较两半的连接模式。Run01/Run02 是同日重复采集，00w 是观测起点。
 
-The code is organized as research scripts rather than a packaged command-line application. Most runtime behavior is controlled by YAML configuration files in `configs/`.
+## 运行
 
-## Documentation
+在已安装 `environment.yaml` 依赖的环境中，通过 PowerShell 执行：
 
-- Detailed workflow: [docs/workflow.md](docs/workflow.md)
-- Configuration reference: [docs/config.md](docs/config.md)
-- Citation metadata: [CITATION.cff](CITATION.cff)
-- License: [LICENSE](LICENSE)
+```powershell
+Set-Location F:\Projects\ID-mRSFC-ISOI\P1_Combined
+python run.py --dry-run
+python run.py
+python run.py --configs configs/Aseries.yaml configs/Nseries.yaml --start identification
+python run.py -c configs/Aseries.yaml --stage statistics
+```
 
-## Overview
+默认按 Aseries、Nseries 顺序，从 `fc` 开始执行到 `statistics`。`--stage` 只运行一个阶段；`--start` 连续运行指定阶段及其后续阶段。阶段顺序：`preprocess → fc → identification → statistics`。原始数据预处理含人工配准，必须显式选择 `--start preprocess`。配置路径、配置内相对数据路径均以 P1 项目根目录为基准，因此也可从其他目录通过绝对路径启动 `run.py`。
 
-Main analysis stages:
+先检查配置中的 raw/processed/mask 路径。A/N 配置的鼠、周、Run、Atlas 名单与当前 P2 配置对齐，P1 的识别参数仍独立保留。发生阶段错误时返回非零退出码，并停止后续阶段和配置；缺失采集记录写入审计，由 strict/cover 队列规则处理。
 
-1. Preprocess raw OIS data with `scripts/01_preprocess.py`.
-2. Compute ROI-level FC matrices with `scripts/02_correlation.py`.
-3. Run individual identification and edge-contribution analysis with `scripts/03_identification.py`.
-4. Run statistical summaries and per-mouse self-match advantage/percentile with `scripts/04_statistics.py`.
+## 复用 P2 的 Correlation
 
-Legacy DD/ND is outside the formal pipeline.
+指定 **P2 某一次运行的输出根目录**，不是整个 `data/output`：
 
-Core capabilities:
+```powershell
+python run.py -c configs/Aseries.yaml --start identification --import-fc "F:\path\to\P2_A_output" --dry-run
+python run.py -c configs/Aseries.yaml --start identification --import-fc "F:\path\to\P2_A_output"
+python run.py -c configs/Nseries.yaml --start identification --import-fc "F:\path\to\P2_N_output"
+```
 
-- OIS200-style raw binary reading.
-- TIFF conversion and Suite2p motion correction.
-- Interactive atlas alignment.
-- dR/R, detrending, global signal regression, filtering, and downsampling.
-- ROI time-series extraction and FC matrix estimation.
-- Individual identification, permutation testing, edge contribution, and statistical plotting.
+`--import-fc` 也接受 `.../Correlation` 文件夹，包括已经手动复制到 P1 目标目录中的文件夹。首次必须显式导入以创建当前配置的审计；此后直接 `--start identification`。导入仅复制分析所需的周汇总 PKL，保留原始字节、标签和矩阵；无需 raw、FiltDRR 或 FC_Matrix 缓存。不会覆盖内容不同的目标文件。
 
-Repository layout:
+有源配置/BatchReport 时同时校验采集范围和审计；只有 Correlation 时按缺失单元格重建审计，来源信息标为不可用。矩阵格式损坏或标签不一致直接报错。格式共用不代表 Suite2p/GSR 等预处理等价，源配置保存在导入来源记录中。只导入可信的本地 PKL。
+
+## 输出
+
+与 P2 使用相同顶层结构，仍保留原来的完整配置哈希命名规则：
 
 ```text
-ID-mRSFC-ISOI/
-|-- configs/                 # YAML runtime configs
-|-- data/                    # Local raw, mask, processed, and output data
-|-- docs/                    # Workflow and config documentation
-|-- logs/                    # Runtime logs
-|-- notebooks/               # Exploratory notebooks
-|-- scripts/                 # Numbered pipeline scripts
-|-- srcs/                    # Core Python modules
-|-- tests/environment.yaml   # Unified Python 3.13.13 analysis + Suite2p environment
-|-- CITATION.cff
-|-- LICENSE
-`-- README.md
+data/output/<analysis_tag>/<dataset>/
+├── Correlation/                  # 两个项目共用的 FC 周汇总表
+├── results/combined/             # P1 识别、shuffle、edge 数值及 statistics.pkl
+├── report/                       # 图形与统计汇总表（tables/）
+│   └── combined/                 # 识别与 edge 图
+└── metadata/                     # 配置、队列选择、来源及阶段记录
+    ├── batch_reports/
+    └── manifests/
 ```
 
-Generated data and logs are not version-controlled.
+P2 的纵向结果仍叫 `results/longitudinal`；P1 使用 `results/combined` 表明分析含义不同。两个配置哈希无需相同，导入会将 FC 放入当前 P1 配置对应的输出路径。
 
-## Quick Start
+数字脚本保留为兼容入口，实现在 `srcs/workflow/`，可以通过 `run(ctx)` 单独调用。DD/ND legacy 功能仍只在 `srcs/utils/legacy_structure.py` 中，不加入正式流程。
 
-Create the unified environment:
+## 验证与文档
 
-```bash
-conda env create -f tests/environment.yaml
+```powershell
+python -m unittest discover -s validation -v
 ```
 
-Prepare your active config before running. `configs/default.yaml` is the recommended relative-path template; `configs/OIS.yaml` contains a lab-machine raw-data path example. See [docs/config.md](docs/config.md) for all fields.
-
-Run preprocessing and analysis in the same environment:
-
-```bash
-conda activate ID-mRSFC-ISOI_suite2p
-python scripts/01_preprocess.py -c configs/default.yaml
-```
-
-Run downstream analysis in the same environment:
-
-```bash
-conda activate ID-mRSFC-ISOI_suite2p
-python scripts/02_correlation.py -c configs/default.yaml
-python scripts/03_identification.py -c configs/default.yaml
-python scripts/04_statistics.py -c configs/default.yaml
-```
-
-Optional legacy DD/ND is available as a function (descriptive by default):
-
-```python
-from srcs.utils.config import load_context
-from srcs.utils.legacy_structure import run_legacy_structure_analysis
-run_legacy_structure_analysis(load_context("configs/default.yaml"))
-```
-
-For required input layout, masks, interactive atlas alignment, expected outputs, and practical notes, see [docs/workflow.md](docs/workflow.md).
-
-## Known Issues
-
-Some implementation details are intentionally left unchanged for now:
-
-- `keepna=True` in raw binary frame reading may not preserve missing frames as NaN because adjusted frames are stored in an unsigned integer array.
-- `srcs/atlas/Atlas_Mask.py::Get_Func_Mask()` appears to contain a non-main-path indexing issue and should be checked before using that helper directly.
-
-See [docs/workflow.md](docs/workflow.md) for runtime prerequisites and [docs/config.md](docs/config.md) for configuration details.
-
-## Data Availability
-
-Raw experimental data and lab-internal core code are not publicly distributed with this repository. Please contact the authors for data access or collaboration requests.
-
-## Citation
-
-If you use this repository, cite the software metadata in [CITATION.cff](CITATION.cff) and the core references below as appropriate.
-
-Core literature:
-
-- Finn, E. S., et al. (2015). Functional connectome fingerprinting: identifying individuals using patterns of brain connectivity. Nature Neuroscience. DOI: [10.1038/nn.4135](https://doi.org/10.1038/nn.4135)
-- White, B. R., et al. (2011). Imaging of functional connectivity in the mouse brain. PLOS ONE. DOI: [10.1371/journal.pone.0016322](https://doi.org/10.1371/journal.pone.0016322)
-- Bergmann, E., et al. (2020). Individual variability in functional connectivity architecture of the mouse brain. Communications Biology. DOI: [10.1038/s42003-020-01472-5](https://doi.org/10.1038/s42003-020-01472-5)
-
-Code references:
-
-- `circularGraph` visualization is adapted from [paul-kassebaum-mathworks/circularGraph](https://github.com/paul-kassebaum-mathworks/circularGraph).
-- Additional lab core code is internal and not publicly released.
+[流程与迁移说明](docs/workflow.md) · [配置说明](docs/config.md) · [方法记录](docs/optimization.md) · [引用](CITATION.cff) · [许可证](LICENSE)

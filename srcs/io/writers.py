@@ -103,7 +103,7 @@ def export_individual_identifiability(ctx, stat, analysis_meta):
         raise ValueError('Duplicate mouse IDs in analysis metadata.')
     for atlas in atlases:
         for condition in stat.columns:
-            path = Path(ctx.output_path)/'Identification'/str(condition)/'Numeric'/f'identification_{atlas}.pkl'
+            path = Path(ctx.output_dir('Identification', str(condition), 'Numeric', create=False))/f'identification_{atlas}.pkl'
             with path.open('rb') as stream:
                 payload = pickle.load(stream)
             if payload.get('analysis') != analysis_meta or payload.get('mice') != mice:
@@ -123,7 +123,7 @@ def export_individual_identifiability(ctx, stat, analysis_meta):
                'self_match_advantage','self_match_percentile','row_self_match_percentile','col_self_match_percentile']
     frame = pd.DataFrame(rows, columns=columns)
     save_table(Path(ctx.output_dir('Statistics','Tables'))/'individual_identifiability.csv',frame,index=False)
-    save_json(Path(ctx.output_dir('Statistics'))/'individual_identifiability_metadata.json',dict(
+    save_json(Path(ctx.output_dir('Metadata'))/'individual_identifiability_metadata.json',dict(
         analysis=analysis_meta, status='complete' if rows else 'empty_selection',
         inference='descriptive_only', advantage='self minus mean of row/column nonself similarities',
         percentile='mean row/column fraction of nonself candidates beaten; exact tie=0.5',

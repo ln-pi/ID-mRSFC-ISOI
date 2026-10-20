@@ -340,13 +340,23 @@ class Identify(object):
         vmax_default = matrix_config.pop("vmax_default", 3.0)
         vmin_association = matrix_config.pop("vmin_association", 2.0)
         vmax_association = matrix_config.pop("vmax_association", 3.5)
+        limits_by_atlas = matrix_config.pop("limits_by_atlas", {})
+        limits = limits_by_atlas.get(atlas_tag)
+        if limits is None:
+            limits = ((vmin_association, vmax_association) if atlas_tag == "SM_VIS_AUD"
+                      else (vmin_default, vmax_default))
+        if (not isinstance(limits, (list, tuple)) or len(limits) != 2
+                or not all(isinstance(v, (int, float)) and not isinstance(v, bool)
+                           and np.isfinite(v) for v in limits)
+                or limits[0] >= limits[1]):
+            raise ValueError(f"Similarity color limits for {atlas_tag} require finite [min, max] with min < max")
         mat_config = {
             "title": "Similarity Matrix",
             "cmap": "inferno",
             "cbar": True,
             "axis": True,
-            "vmin": vmin_association if atlas_tag == "SM_VIS_AUD" else vmin_default,
-            "vmax": vmax_association if atlas_tag == "SM_VIS_AUD" else vmax_default,
+            "vmin": limits[0],
+            "vmax": limits[1],
             "xlabel": self.labels[0],
             "ylabel": self.labels[1],
             "xticks": {
