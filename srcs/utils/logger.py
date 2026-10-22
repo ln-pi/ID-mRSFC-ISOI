@@ -60,7 +60,6 @@ class TqdmLoggingHandler(logging.Handler):
             self.handleError(record)
 
 
-
 def setup_logger(
         log_file: Optional[str] = None,
         level: int = logging.INFO,

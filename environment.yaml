@@ -1,44 +1,28 @@
+# Unified analysis + Suite2p environment; registration adapter targets Suite2p 1.1.0.
+# Scientific Python packages are installed together by pip to avoid duplicate Conda/pip builds.
+# opencv -> opencv-python-headless; pyqt -> PyQt6 (Suite2p GUI uses Qt6).
 name: ID-mRSFC-ISOI
-
 channels:
-  - conda-forge
-  - defaults
-
+- conda-forge
+- nodefaults
 dependencies:
-  - python=3.13
-
-  # core
-  - numpy
+- python=3.13.13
+- pip
+- pip:
+  - numpy>=1.24.3
   - scipy
   - pandas
   - matplotlib
   - pyyaml
   - tqdm
   - seaborn
-  - scikit-learn
   - statsmodels
-
-  # graph/network
-  - networkx
-  - igraph
-
-  # imaging
   - pillow
-  - imageio
   - tifffile
-
-  # jupyter
   - jupyter
   - ipykernel
-
-  - pip
-
-  # pip only packages
-  - pip:
-      - pingouin
-      - pyvis
-      - cdlib
-      - dynetx
-      - hmmlearn
-      - opencv-python
-      - numba
+  - pingouin
+  - opencv-python-headless
+  - numba
+  - PyQt6
+  - suite2p[gui]==1.1.0

@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ID-mRSFC-ISOI"
+version = "0.3.0"
+description = "Unified mouse resting-state FC edge-store and longitudinal workflow"
+requires-python = ">=3.13"
+dependencies = [
+  "numpy>=1.24.3", "pandas", "scipy", "PyYAML", "Pillow", "matplotlib",
+  "seaborn", "tqdm", "statsmodels", "pingouin",
+]
+
+[project.optional-dependencies]
+preprocessing = ["suite2p[gui]==1.1.0", "opencv-python-headless", "tifffile", "PyQt6"]
+
+[project.scripts]
+isoi = "run:main"
+
+[tool.setuptools]
+py-modules = ["run"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["srcs*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+"srcs.atlas" = ["*.pkl", "*.npy", "*.png"]
