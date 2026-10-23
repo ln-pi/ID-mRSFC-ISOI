@@ -36,7 +36,17 @@ python run.py -c configs/Nseries.yaml --stage report --report-section combined
 python run.py -c configs/Nseries.yaml --stage report --report-section statistics
 ```
 
-`report` 默认绘制所有已有数值结果；`--report-section` 可选 `pairwise/combined/statistics/all`。combined 和 statistics 阶段不再直接绘图，统计数值统一写入 `results/statistics/`，原 `report/tables/` 中初版遗留文件不作为新流程输入。独立重绘无需原始 FC 表和 edge cache，也不会改写 `results/`。FC 阶段仍可生成采集诊断图，生成逻辑位于 visualization，不在 FC 计算核心中。
+`report` 默认绘制所有已有数值结果；`--report-section` 可选 `pairwise/descriptive/stability/longitudinal/combined/statistics/all`。combined 和 statistics 阶段不再直接绘图，统计数值统一写入 `results/statistics/`，原 `report/tables/` 中初版遗留文件不作为新流程输入。独立重绘无需原始 FC 表和 edge cache，也不会改写 `results/`。FC 阶段仍可生成采集诊断图，生成逻辑位于 visualization，不在 FC 计算核心中。
+
+幅度与拓扑分析：
+
+```powershell
+python run.py --stage edges
+python run.py --stage descriptive
+python run.py --stage report --report-section descriptive
+```
+
+默认对每个 Run 及所有 Run 的 Fisher-z FC 均值分别计算欧式/RMS/1−r 距离、LOO ΔFC、群体离散度、逐边样本方差及 ROI/网络方向和贡献。`results/descriptive/v2/` 保存两套队列的全部数值、选择规则和描述性离群示例；`report/descriptive/` 保存 PNG/PDF 和索引。参数和公式见 [配置与数据契约](config.md)。
 
 ## 显式导入已有 FC
 
@@ -65,15 +75,25 @@ combined 从 F_z 平均后重新计算相关，保留有效 P1 14 周、7+7 拆�
 
 00w 是注射第一周；03w 是研究指定的注射后参照，不能称健康基线。N 使用起病/早/中/晚时间窗，A 使用相同观察时间窗。时间窗标签不代表每鼠临床进度相同。
 
-当前实现提供基础数组、描述分析和兼容 combined。复杂 ICC、方差随机效应、正式动物层重采样、临床表型预测及残差 FC 分析没有因框架统一而自动完成。预处理沿用迁移模块，注册依赖 Suite2p 1.1.0；本次只做预处理模块导入检查，没有执行原始采集的人工配准或重做 FC。
+当前实现提供基础数组、幅度/拓扑、稳定性、纵向轨迹与网络随机斜率，以及兼容 combined。stability 对完整平衡队列估计逐边方差分量和条件稳定 ICC；longitudinal 提供动物 block bootstrap 轨迹区间、固定/可用队列对照及网络随机斜率诊断。残差模式的跨周识别、临床表型预测、非线性病程模型和信息性失访校正仍未实现。预处理沿用迁移模块，注册依赖 Suite2p 1.1.0；不因下游升级自动重做原始采集配准或 FC。
+
+稳定性和纵向演化在 descriptive 后运行：
+
+```powershell
+python run.py --stage stability
+python run.py --stage longitudinal
+python run.py --stage report --report-section stability
+python run.py --stage report --report-section longitudinal
+```
+
+首次升级先重建 edges/descriptive。也可使用 `--start descriptive` 连续运行后续全部阶段；这包含原 combined/statistics，不是仅运行新增两个模块。新阶段的方差模型、固定队列限制和输出详见 [数据契约](config.md)。
 
 旧二进制读取器对缺帧的 unsigned 整数表示限制仍在；不能将 keepna 当成已验证的原始缺失保留方案。预处理实际固定采用 30Hz 输入、0.009–0.08Hz 带通、5Hz 输出；删除了未被实现读取的 bin/filter/robust 配置项，避免造成可配置的假象。
 
 ## 验证
 
 ```powershell
-python -m unittest discover -s validation -v
-python validation/check_existing.py -c configs/Aseries.yaml --source "F:\path\to\saved_P1_A_output"
+python -m unittest discover -s tests -v
 ```
 
-细节见 [现行架构与重构验收](refactor_p2.md)、[初版验收记录](unification_validation.md) 和 [数据契约](config.md)。交接文档保持为原设计记录。
+幅度与拓扑检查包含独立公式恒等式、缺失与常量模式、ROI/网络贡献守恒及独立重绘。详细参数见 [数据契约](config.md)。

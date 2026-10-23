@@ -9,6 +9,9 @@ from srcs.utils.results import save_json
 def report_inputs(ctx):
     root = Path(ctx.output_path)
     return dict(pairwise=root / "results/pairwise/selection.json",
+                descriptive=root / "results/descriptive/v2/index.json",
+                stability=root / "results/stability/index.json",
+                longitudinal=root / "results/longitudinal/index.json",
                 combined=Path(ctx.statistics_path),
                 statistics=root / "results/statistics/individual_identifiability.csv")
 

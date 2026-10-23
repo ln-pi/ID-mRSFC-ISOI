@@ -28,7 +28,7 @@ def main(argv=None):
     stages.add_argument('--start', choices=STAGES)
     parser.add_argument('--dry-run', action='store_true', help='Validate selected inputs and print output locations without running stages')
     parser.add_argument('--import-fc', metavar='SOURCE_OUTPUT', help='Explicit source output/correlation directory; requires -c and edges stage')
-    parser.add_argument('--report-section', choices=('all', 'pairwise', 'combined', 'statistics'), default='all',
+    parser.add_argument('--report-section', choices=('all', 'pairwise', 'descriptive', 'stability', 'longitudinal', 'combined', 'statistics'), default='all',
                         help='Saved-result section to redraw during report (default: all available)')
     parser.add_argument('--report-root', default='reports/automatic', help='Batch plan/status directory')
     args = parser.parse_args(argv)

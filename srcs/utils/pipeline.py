@@ -29,7 +29,7 @@ def validate(ctx, stage, importing=False):
         from srcs.utils.edge_store import source_identity
         for atlas in ctx.atlases:
             source_identity(ctx, '_'.join(atlas))
-    elif stage in ('pairwise', 'descriptive', 'combined'):
+    elif stage in ('pairwise', 'descriptive', 'stability', 'longitudinal', 'combined'):
         from srcs.utils.edge_store import load_store
         for atlas in ctx.atlases:
             store = load_store(ctx, '_'.join(atlas))
@@ -38,6 +38,14 @@ def validate(ctx, stage, importing=False):
             from srcs.analysis.pairwise import selections, week_positions
             selections(ctx)
             week_positions(ctx)
+        if stage in ('stability', 'longitudinal'):
+            from srcs.utils.analysis_products import bootstrap_options, descriptive_products
+            bootstrap_options(ctx, stage)
+            for atlas in ctx.atlases:
+                descriptive_products(ctx, '_'.join(atlas))
+            if stage == 'longitudinal':
+                from srcs.analysis.pairwise import week_positions
+                week_positions(ctx)
         if stage == 'combined':
             from srcs.utils.dataset import select_complete_cohort
             mice, audit = select_complete_cohort(ctx)
@@ -66,7 +74,7 @@ def main(argv=None):
     selection.add_argument('--start', choices=STAGES, default='fc')
     parser.add_argument('--dry-run', action='store_true')
     parser.add_argument('--import-fc')
-    parser.add_argument('--report-section', choices=('all', 'pairwise', 'combined', 'statistics'), default='all')
+    parser.add_argument('--report-section', choices=('all', 'pairwise', 'descriptive', 'stability', 'longitudinal', 'combined', 'statistics'), default='all')
     args = parser.parse_args(argv)
     ctx = load_context(args.config, create_dirs=False)
     ctx.args.report_section = args.report_section

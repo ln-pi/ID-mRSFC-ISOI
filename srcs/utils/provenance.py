@@ -22,4 +22,4 @@ def code_identity():
     files = [ROOT / "run.py", *sorted((ROOT / "srcs").rglob("*.py"))]
     hashes = {p.relative_to(ROOT).as_posix(): sha256(p) for p in files}
     return dict(commit=git("rev-parse", "HEAD"), working_tree=git("status", "--porcelain"),
-                source_sha256=hashes, packages={p: version(p) for p in ("numpy", "pandas", "scipy")})
+                source_sha256=hashes, packages={p: version(p) for p in ("numpy", "pandas", "scipy", "statsmodels")})

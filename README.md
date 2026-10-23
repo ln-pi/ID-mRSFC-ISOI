@@ -11,7 +11,11 @@ The project connects acquisition-level preprocessing, cortical functional connec
 - ROI time-series extraction and labeled cortical FC matrices.
 - Shared FC edge arrays for combined and longitudinal analyses.
 - Within-Run cross-week similarity, phase-based comparisons, and individual identifiability metrics.
-- Same-day Run repeatability, connectivity deviations, and edge-level variability.
+- Euclidean/RMS and correlation distances, group dispersion, and individual deviation examples.
+- Leave-one-out Delta FC maps, edge variance, regional/network summaries, and deviation direction.
+- Same-day Run repeatability and changes from each mouse's reference week.
+- Edgewise stable-mouse ICC, absolute variance components, and stable individual effect maps.
+- Delta FC persistence, animal-block trajectory intervals, and network random slopes.
 - Identification permutation analysis, edge contribution, and statistical summaries.
 - Figures generated independently from saved analysis results.
 
@@ -73,7 +77,25 @@ For each comparison, the project reports:
 
 ### Repeatability and variability
 
-Descriptive analyses retain Run-level observations and quantify same-day pattern correlation, RMS differences, and signed edge-weight shifts. Longitudinal outputs include changes relative to each mouse's reference week, deviations from a same-group leave-one-out reference, and between-mouse edge variance.
+Descriptive analysis measures FC differences in Fisher-z edge space. For E edges, Euclidean distance is `sqrt(sum((f_i-f_j)^2))` and RMS distance is Euclidean distance divided by `sqrt(E)`. Pattern distance is `1-Pearson(f_i,f_j)`; it is reported separately from amplitude distances.
+
+Each mouse's Delta FC is its edge vector minus the mean of the other mice in the same group, week, and Run view. Its RMS summarizes the magnitude of deviation. Group dispersion uses the full group mean and denominator N; edgewise sample variance uses N−1. Positive Delta FC means stronger connectivity relative to the reference, and negative Delta FC means weaker connectivity. These signs do not indicate excitation or inhibition.
+
+The default views include each Run separately and FC averaged across all configured Runs **before** calculating metrics. The averaged view requires every Run to be valid. Results include all mice available each week and a cohort complete across the selected window. The largest LOO RMS identifies a descriptive example; it does not label or exclude an animal as a statistical outlier.
+
+Delta FC and variance are summarized by ROI, network pair, and hemisphere pair. ROI contributions split each edge's squared deviation or variance equally between its two endpoints; network pairs retain unique edges. Both normalized contributions and per-edge averages are saved. The built-in network grouping follows the atlas's anatomical families; explicit ROI-to-network mappings can define other networks.
+
+Same-day outputs quantify pattern correlation, RMS differences, and signed shifts between Runs. Changes from each mouse's own reference week remain separate from same-week group Delta FC. Amplitude/topology outputs remain descriptive; variance models and trajectory uncertainty are separate stages.
+
+### Stability and longitudinal evolution
+
+Stability analysis compares raw FC and Delta FC between same-day Runs using common reference animals. Across weeks, each mouse's Delta FC vectors are correlated over edges; the same-record diagonal is excluded. Dynamic and fixed-window references are reported separately.
+
+For each edge, a balanced repeated-measures model includes fixed week and Run effects, a stable mouse effect, a mouse-by-week effect, and Run-level residual error. Stable-mouse ICC is `mouse_variance / (mouse_variance + mouse_week_variance + error_variance)`. Absolute variance, animal-bootstrap intervals, boundary status, and conditional stable-mouse effect maps accompany ICC. This model uses animals complete across the selected weeks and Runs, with an explicit cohort audit. The stable effect may include persistent imaging or anatomical differences.
+
+Longitudinal analysis reports group dispersion and individual deviation trajectories, rank persistence, and dispersion trend intervals obtained by resampling whole animals. Available and fixed cohorts remain separate; increasing/decreasing dispersion labels describe an overall time trend rather than a causal or necessarily monotonic process.
+
+Network FC means are also fitted with linear time and Run fixed effects, correlated mouse intercepts/slopes, and a mouse-by-week random effect using [Statsmodels MixedLM](https://www.statsmodels.org/stable/generated/statsmodels.regression.mixed_linear_model.MixedLM.html). Outputs include conditional individual slopes, variance estimates, convergence/boundary flags, optimizer warnings, and residual diagnostics. Nonconverged fits do not produce individual slope predictions. Informative loss of severely affected animals is not resolved by these models.
 
 Pairwise summaries provide both mice available at each week pair and a fixed cohort complete across the selected window. Candidate sets are recorded, and matching metrics are computed within each set. Combined analyses use a separately configured completeness policy.
 
@@ -87,10 +109,12 @@ Statistical summaries include paired effect sizes, repeated-measures analysis, a
 | `fc` | Compute labeled FC matrices for individual recordings |
 | `edges` | Assemble the shared mouse × week × Run × edge arrays |
 | `pairwise` | Calculate per-Run cross-week similarities and window-based mouse metrics |
-| `descriptive` | Summarize Run repeatability, reference deviations, and edge variability |
+| `descriptive` | Compute distances, dispersion, Delta FC, edge/regional variability, and Run repeatability |
+| `stability` | Estimate Run repeatability, Delta FC persistence, stable components, and edgewise ICC |
+| `longitudinal` | Calculate trajectory intervals, dispersion trends, rank persistence, and network random slopes |
 | `combined` | Calculate identification, permutation distributions, and edge contributions from grouped observations |
 | `statistics` | Export combined-analysis subject metrics and statistical tables |
-| `report` | Generate pairwise, combined, and statistical figures from saved results |
+| `report` | Generate figures for saved analysis sections |
 
 ## Installation and configuration
 
@@ -134,12 +158,18 @@ To run individual analyses or redraw saved results:
 
 ```powershell
 python run.py -c configs/Aseries.yaml --stage pairwise
+python run.py -c configs/Aseries.yaml --stage descriptive
+python run.py -c configs/Aseries.yaml --stage stability
+python run.py -c configs/Aseries.yaml --stage longitudinal
 python run.py -c configs/Aseries.yaml --stage combined
 python run.py -c configs/Aseries.yaml --stage report
 python run.py -c configs/Aseries.yaml --stage report --report-section combined
+python run.py -c configs/Aseries.yaml --stage report --report-section descriptive
+python run.py -c configs/Aseries.yaml --stage report --report-section stability
+python run.py -c configs/Aseries.yaml --stage report --report-section longitudinal
 ```
 
-`--report-section` selects `pairwise`, `combined`, `statistics`, or `all`. Numerical outputs and figure generation are separate, so saved analyses can be redrawn without rerunning their calculations.
+`--report-section` selects `pairwise`, `descriptive`, `stability`, `longitudinal`, `combined`, `statistics`, or `all`. Numerical outputs and figure generation are separate, so saved analyses can be redrawn without rerunning their calculations.
 
 ## Outputs
 
@@ -151,7 +181,9 @@ data/output/<analysis_tag>/<dataset>/
 ├── results/
 │   ├── edges/               FC edge arrays, labels, and recording masks
 │   ├── pairwise/            Per-Run similarity arrays and week-pair/window summaries
-│   ├── descriptive/         Repeatability, deviations, and edge variability
+│   ├── descriptive/v2/      Distances, dispersion, Delta FC, regions, and examples
+│   ├── stability/           Repeatability, Delta FC persistence, variance components, ICC
+│   ├── longitudinal/        Trajectories, uncertainty, trends, network slopes and diagnostics
 │   ├── combined/            Identification, permutations, and Phi/DP
 │   └── statistics/          Subject metrics and statistical tables
 ├── report/                  Figures and report indexes
