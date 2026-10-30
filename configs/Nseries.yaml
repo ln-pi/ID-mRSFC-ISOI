@@ -1,9 +1,9 @@
 # Paths are relative to main. Each Run is retained; 03w is a post-injection reference.
 paths:
-  raw: F:\OIS_Awake_Mice\
-  processed: F:\data\processed\
+  raw: data\raw\
+  processed: E:\data\processed\
   output: data\output\
-  mask: ../data/mask
+  mask: data\mask\
   log: logs\Nseries.log
 variables:
   dataset: ''
@@ -23,16 +23,21 @@ variables:
   - 12w
   - 13w
   Mouse_ids:
-  - N01
-  - N02
-  - N03
-  - N04
-  - N05
-  - N06
-  - N07
-  - N08
-  - N09
-  - N10
+  - N01 #B20
+  - N02 #B22
+  - N03 #B23
+  - N04 #B24
+  - N05 #B25
+  - N06 #B30
+  - N07 #B31
+  - N08 #N12
+  - N09 #N14
+  - N10 #N15
+  - N11 #N17
+  - N12 #N19
+  - N13 #N20
+  - N14 #N27
+  - N15 #N29
   Run_ids:
   - Run01
   - Run02
@@ -67,6 +72,12 @@ Edge:
   cross_only: false
   save_mat: true
 visualization:
+  pairwise:
+    vmin: 0
+    vmax: 1
+    cmap: inferno
+    under_color: '#d73027'
+    over_color: '#762a83'
   defaults:
     dpi: 180
     render_dpi: 300
@@ -81,7 +92,7 @@ visualization:
     vmin: -1
     vmax: 1
     square: true
-    cmap: coolwarm
+    cmap: inferno
     cbar: true
     label_fontsize_small: 10
     label_fontsize_scale: 300

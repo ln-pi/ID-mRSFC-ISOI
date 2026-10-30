@@ -1,9 +1,9 @@
 # Usable A-series example; configure actual recording paths before FC/preprocessing.
 paths:
-  raw: ../data/raw
-  processed: ../data/processed
+  raw: data\raw\
+  processed: data\processed\
   output: data\output\
-  mask: ../data/mask
+  mask: data\mask\
   log: logs/default.log
 variables:
   dataset: ''
@@ -67,6 +67,12 @@ Edge:
   cross_only: false
   save_mat: true
 visualization:
+  pairwise:
+    vmin: 0
+    vmax: 1
+    cmap: inferno
+    under_color: '#d73027'
+    over_color: '#762a83'
   defaults:
     dpi: 180
     render_dpi: 300
@@ -81,7 +87,7 @@ visualization:
     vmin: -1
     vmax: 1
     square: true
-    cmap: coolwarm
+    cmap: inferno
     cbar: true
     label_fontsize_small: 10
     label_fontsize_scale: 300
