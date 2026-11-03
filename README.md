@@ -112,6 +112,8 @@ Statistical summaries include paired effect sizes, repeated-measures analysis, a
 | `preprocess` | Convert raw recordings, perform motion correction and atlas alignment, and prepare filtered signals |
 | `fc` | Compute labeled FC matrices for individual recordings |
 | `edges` | Assemble the shared mouse × week × Run × edge arrays |
+| `geometry` | Calculate Run distances, discriminability, separation margins, reproducible differences, and saved projections |
+| `inference` | Summarize weekly endpoints and animal-level sensitivity and trends |
 | `pairwise` | Calculate per-Run cross-week similarities and window-based mouse metrics |
 | `descriptive` | Compute distances, dispersion, Delta FC, edge/regional variability, and Run repeatability |
 | `stability` | Estimate Run repeatability, Delta FC persistence, stable components, and edgewise ICC |

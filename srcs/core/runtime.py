@@ -49,6 +49,8 @@ def cache_key(code, options, inputs):
 def reusable(record, key):
     if record.get("status") != "complete" or record.get("cache", {}).get("key") != key:
         return False
+    if not record.get("products"):
+        return False
     outputs = record["cache"].get("outputs", {})
     return bool(outputs) and all(Path(path).is_file() and sha256(path) == checksum
                                  for path, checksum in outputs.items())

@@ -1,7 +1,9 @@
 """Draw series comparisons from published, aligned animal observations."""
 from pathlib import Path
+import json
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 
 from srcs.core.artifacts import sha256, write_json
 
@@ -11,6 +13,9 @@ def render(folder, first, second, paired):
     root.mkdir(parents=True,exist_ok=True)
     source=Path(folder)/"projection.csv"
     display=pd.read_csv(source)
+    summaries=pd.read_csv(Path(folder)/"trajectories.csv")
+    distances=pd.read_csv(Path(folder)/"distances.csv")
+    mice=json.loads((Path(folder)/"identity.json").read_text(encoding="utf-8"))["mice"]
     paths=[]
     for (atlas,cohort),group in display.groupby(["atlas","cohort"]):
         weeks=list(group.week.unique())
@@ -34,6 +39,43 @@ def render(folder, first, second, paired):
         fig.savefig(path,bbox_inches="tight")
         plt.close(fig)
         paths.append(path)
+        summary=summaries[(summaries.atlas==atlas)&(summaries.cohort==cohort)]
+        fig,axes=plt.subplots(2,2,figsize=(10,7))
+        for ax,name,title in zip(axes.flat,["dispersion","self_distance","q","margin"],
+                                 ["Dispersion","Within-mouse RMS","Discriminability","Separation margin"]):
+            for side,label,color in (("first",first,"#356caa"),("second",second,"#bd502f")):
+                series=summary[summary.side==side].groupby("week",sort=False)[name].mean()
+                ax.plot(weeks,series.reindex(weeks),color=color,label=label)
+            ax.set_title(title)
+        axes[0,0].legend(fontsize=6)
+        fig.tight_layout()
+        path=root/f"{atlas}_{cohort}_trajectories.png"
+        fig.savefig(path,bbox_inches="tight")
+        plt.close(fig)
+        paths.append(path)
+        dm=distances[(distances.atlas==atlas)&(distances.cohort==cohort)]
+        limit=dm.distance.max()
+        for (week,query,reference),part in dm.groupby(["week","query","reference"]):
+            fig,axes=plt.subplots(1,2,figsize=(9,4))
+            for ax,side in zip(axes,("first","second")):
+                sample=part[part.side==side]
+                if sample.empty:
+                    ax.set_axis_off()
+                    continue
+                matrix=sample.pivot(index="mouse",columns="other",values="distance").reindex(
+                    index=mice[side],columns=mice[side])
+                im=ax.imshow(matrix,cmap=plt.get_cmap("inferno").with_extremes(bad="lightgray"),
+                             vmin=0,vmax=limit)
+                ax.set_xticks(range(len(matrix.columns)),matrix.columns,rotation=90,fontsize=7)
+                ax.set_yticks(range(len(matrix)),matrix.index,fontsize=7)
+                valid=matrix.notna().any(axis=1).to_numpy()
+                ax.scatter(np.nanargmin(matrix.values[valid],axis=1),np.flatnonzero(valid),marker="x",color="cyan")
+                ax.set(title=side+" | n="+str(valid.sum()),xlabel=reference,ylabel=query)
+            fig.colorbar(im,ax=list(axes),label="RMS")
+            path=root/f"{atlas}_{cohort}_{week}_{query}_{reference}_rms.png"
+            fig.savefig(path,bbox_inches="tight")
+            plt.close(fig)
+            paths.append(path)
         if paired:
             fig,ax=plt.subplots(figsize=(8,4))
             pairs=group.pivot(index=["week","run","mouse"],columns="side",values="q")
@@ -45,5 +87,6 @@ def render(folder, first, second, paired):
             fig.savefig(path,bbox_inches="tight")
             plt.close(fig)
             paths.append(path)
-    write_json(root/"manifest.json",dict(first=first,second=second,source={str(source):sha256(source)},
+    inputs=[source,Path(folder)/"trajectories.csv",Path(folder)/"distances.csv"]
+    write_json(root/"manifest.json",dict(first=first,second=second,source={str(p):sha256(p) for p in inputs},
                figures={str(p):sha256(p) for p in paths}))

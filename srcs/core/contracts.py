@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping
 
@@ -9,6 +9,7 @@ class ProductRef:
     schema: str
     path: Path
     sha256: str
+    metadata: Mapping = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

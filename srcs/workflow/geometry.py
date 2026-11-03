@@ -91,6 +91,8 @@ def run(ctx):
                       ("crossval",differences),("points",points),("displacement",displacements)):
         path = folder / (name + ".csv")
         columns = {"subjects": ["atlas","week","cohort","run_a","run_b","metric","rule","mouse","removed","q","margin"],
+                   "crossval":["atlas","week","cohort","run_a","run_b","mode","first","second","estimate","n_noise"],
+                   "displacement":["atlas","week","cohort","run_a","run_b","run","mouse","previous_week","rms","correlation"],
                    "points":["atlas","cohort","run_a","run_b","week","run","mouse","point"],
                    "distances":["atlas","cohort","run_a","run_b","week","metric","query","reference","mouse","other","distance"]}
         frame = pd.DataFrame(rows) if rows else pd.DataFrame(columns=columns.get(name,["atlas","status"]))

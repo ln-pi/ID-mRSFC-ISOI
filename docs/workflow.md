@@ -1,5 +1,17 @@
 # 统一流程
 
+P3 新增的几何计算、来源插件和跨系列比较可从本目录运行：
+
+```powershell
+python run.py -c configs/Aseries.yaml --start geometry
+python run.py -c configs/Aseries.yaml --stage report --report-section geometry
+python run.py -c configs/SeedFC_Aseries_noGSR.yaml --stage seedfc --dry-run
+python run.py --compare <A系列输出目录> <N系列输出目录>
+python run.py --from <旧输出目录> --stage report
+```
+
+输入及方法见 [SeedFC 来源契约](plugin_contract.md) 和 [几何分析](geometry_methods.md)。重绘旧输出时，新报告保存在当前工作树的 `reports/redraw/`。
+
 工作根目录为 `F:/Projects/ID-mRSFC-ISOI/P3_HighDimension`。入口不依赖 VS Code debug 或手工设置 PYTHONPATH。
 
 ```powershell

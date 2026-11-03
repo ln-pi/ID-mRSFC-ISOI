@@ -51,6 +51,7 @@ def run(ctx, dry_run=False):
                 matrix = pd.DataFrame(data["r"],index=labels,columns=labels)
         for part,rules in partitions.items():
             status, reason = "missing", "missing source file"
+            details = {}
             if matrix is not None:
                 excluded = rules["exclude"]
                 if not isinstance(excluded,list) or not set(excluded).issubset(basis):
@@ -59,6 +60,10 @@ def run(ctx, dry_run=False):
                 if len(selected)<3:
                     raise ValueError(f"Fewer than three retained seeds in {part}")
                 frame = matrix.loc[selected,selected]
+                values=frame.to_numpy()
+                usable=np.isfinite(values[np.triu_indices(len(selected),1)])
+                details=dict(retained_seeds=selected,finite_edges=int(usable.sum()),requested_edges=len(usable),
+                             nonfinite_diagonal=[s for s,v in zip(selected,np.diag(values)) if not np.isfinite(v)])
                 if valid_fc(frame,selected):
                     tables[w,part].at[m,r] = frame
                     status,reason = "success",""
@@ -66,7 +71,8 @@ def run(ctx, dry_run=False):
                     raise ValueError(f"Invalid finite FC: {path}")
                 else:
                     status,reason = "missing","nonfinite FC"
-            records.append(dict(week=w,mouse=m,run=r,atlas=part,status=status,reason=reason,input_path=str(path)))
+            records.append(dict(week=w,mouse=m,run=r,atlas=part,status=status,reason=reason,
+                                input_path=str(path),**details))
     if basis is None:
         raise FileNotFoundError("No configured SeedFC records found")
     if dry_run:

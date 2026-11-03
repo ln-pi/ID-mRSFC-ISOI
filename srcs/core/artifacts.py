@@ -31,4 +31,4 @@ def publish(path, name, schema, files):
     path = Path(path)
     entries = {str(Path(item).resolve()): sha256(item) for item in files}
     write_json(path, {"name": name, "schema": schema, "files": entries})
-    return ProductRef(name, schema, path, sha256(path))
+    return ProductRef(name, schema, path, sha256(path),{"files":len(entries)})

@@ -11,6 +11,17 @@ from srcs.core.identity import code_closure, digest
 from srcs.utils.config import PROJECT_ROOT
 from srcs.utils.storage import save_table
 from srcs.analysis.geometry.discriminability import score
+from srcs.analysis.pairwise import week_positions
+
+
+def saved_positions(root, weeks):
+    marker = root / "metadata/stages/inference.json"
+    if marker.is_file():
+        options = json.loads(marker.read_text(encoding="utf-8"))["options"].get("pairwise", {})
+    else:
+        metadata = root / "metadata/analysis_config.json"
+        options = json.loads(metadata.read_text(encoding="utf-8"))["config"].get("pairwise", {})
+    return week_positions(weeks, options.get("week_positions"))
 
 
 def load_products(root):
@@ -45,6 +56,9 @@ def compare(first,second,output_root=None,seed=42,repeats=200):
     b,hb,bb,y=load_products(right)
     if ba!=bb or a["scope"]["weeks"]!=b["scope"]["weeks"] or a["scope"]["runs"]!=b["scope"]["runs"]:
         raise ValueError("Comparison requires identical partitions, ordered ROI/edges, weeks and runs")
+    positions = saved_positions(left, a["scope"]["weeks"])
+    if positions != saved_positions(right, b["scope"]["weeks"]):
+        raise ValueError("Comparison requires identical numerical week positions")
     paired=a["scope"]["series"]==b["scope"]["series"]
     if paired == (a["scope"]["branch"]==b["scope"]["branch"]):
         raise ValueError("Compare two series at one branch or two branches within one series")
@@ -55,9 +69,13 @@ def compare(first,second,output_root=None,seed=42,repeats=200):
     groups=["atlas","cohort","week","run"]
     common_n=pd.concat([x.groupby(groups).mouse.nunique(),y.groupby(groups).mouse.nunique()],
                        axis=1,join="inner").min(axis=1)
-    for root,frame in ((left,x),(right,y)):
+    cross_matrices=[]
+    for side,root,frame in (("first",left,x),("second",right,y)):
         matrix=pd.read_csv(root/"results/geometry/v1/distances.csv")
         matrix=matrix[(matrix.metric=="rms")&(matrix.query!=matrix.reference)]
+        cross_matrices.append(matrix.assign(side=side))
+        own=matrix[matrix.mouse==matrix.other].groupby(["atlas","cohort","week","query","mouse"]).distance.mean()
+        frame["self_distance"]=own.reindex(pd.MultiIndex.from_frame(frame[keys])).to_numpy()
         scores=[]
         for key,part in matrix.groupby(["atlas","cohort","week","query","reference","mouse"]):
             if key[:4] not in common_n:
@@ -77,6 +95,7 @@ def compare(first,second,output_root=None,seed=42,repeats=200):
             aligned=updated.reindex(pd.MultiIndex.from_frame(frame[keys]))
             frame[["q","margin"]]=aligned[["q","margin"]].to_numpy()
     payload=dict(schema="compare_identity_v1",a=digest(a),b=digest(b),inputs=[ha,hb],mode="paired" if paired else "independent",
+                 mice={"first":a["scope"]["mice"],"second":b["scope"]["mice"]},
                  code=digest(code_closure(PROJECT_ROOT,"srcs.workflow.compare")),seed=seed,repeats=repeats)
     folder=(Path(output_root) if output_root else left.parent)/"_compare"/(left.name+"__vs__"+right.name+"_"+digest(payload)[:8])/"results/compare/v1"
     rng=np.random.default_rng(seed)
@@ -122,9 +141,7 @@ def compare(first,second,output_root=None,seed=42,repeats=200):
         trajectories.setdefault((key[0],key[1],key[3],"margin_gap"),[]).append((key[2],values[:,3]))
     for key,items in trajectories.items():
         labels,values=zip(*items)
-        cfg=json.loads((left/"metadata/analysis_config.json").read_text(encoding="utf-8"))["config"]
-        positions=cfg.get("pairwise",{}).get("week_positions",{})
-        t=np.array([positions[w] if w in positions else float(w.rstrip("w")) for w in labels])
+        t=np.array([positions[w] for w in labels])
         slopes=[]
         for trajectory in np.stack(values,axis=1):
             keep=np.isfinite(trajectory)
@@ -144,6 +161,18 @@ def compare(first,second,output_root=None,seed=42,repeats=200):
         display.loc[part.index,"variance_pc1"]=model.explained_variance_ratio_[0]
         display.loc[part.index,"variance_pc2"]=model.explained_variance_ratio_[1]
     projection=folder/"projection.csv"
+    matrices=folder/"distances.csv"
+    save_table(matrices,pd.concat(cross_matrices),index=False)
+    paths.append(matrices)
+    views=[]
+    for key,part in display.groupby(["side",*groups]):
+        pts=np.stack(part.point)
+        views.append(dict(zip(["side",*groups],key),n=len(part),
+                          dispersion=np.var(pts,axis=0,ddof=1).mean() if len(part)>1 else np.nan,
+                          self_distance=part.self_distance.mean(),q=part.q.mean(),margin=part.margin.mean()))
+    summary=folder/"trajectories.csv"
+    save_table(summary,pd.DataFrame(views),index=False)
+    paths.append(summary)
     save_table(projection,display.drop(columns="point"),index=False)
     paths.append(projection)
     for name,table in rows.items():
