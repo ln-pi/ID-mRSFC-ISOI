@@ -3,7 +3,7 @@ __pycache__/
 !/data/mask/
 logs/
 reports/
-validation/
+/validation/
 
 # Keep project documentation; exclude local handover, work and validation records.
 /docs/*
