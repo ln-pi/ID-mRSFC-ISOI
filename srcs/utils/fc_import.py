@@ -4,7 +4,6 @@ Copy table bytes unchanged. Configuration hashes identify analysis settings, not
 FC compatibility. Source preprocessing is recorded, never claimed equivalent.
 """
 from collections import Counter
-import hashlib
 import json
 from pathlib import Path
 
@@ -12,10 +11,7 @@ import pandas as pd
 
 from srcs.utils.layout import fc_reports, correlation_folder
 from srcs.utils.storage import _atomic, save_json
-
-
-def digest(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+from srcs.core.artifacts import sha256 as digest
 
 
 def verify_import(ctx):

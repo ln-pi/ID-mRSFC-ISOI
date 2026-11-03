@@ -9,7 +9,7 @@ description = "Unified mouse resting-state FC edge-store and longitudinal workfl
 requires-python = ">=3.13"
 dependencies = [
   "numpy>=1.24.3", "pandas", "scipy", "PyYAML", "Pillow", "matplotlib",
-  "seaborn", "tqdm", "statsmodels", "pingouin",
+  "seaborn", "tqdm", "statsmodels", "pingouin", "scikit-learn",
 ]
 
 [project.optional-dependencies]

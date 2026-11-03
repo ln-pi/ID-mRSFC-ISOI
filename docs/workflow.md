@@ -1,5 +1,16 @@
 # 统一流程
 
+本机可直接使用已安装的环境启动，无需先激活 Conda：
+
+```powershell
+Set-Location F:\Projects\ID-mRSFC-ISOI\P3_HighDimension
+$python = "F:\CondaEnvs\ID-mRSFC-ISOI\python.exe"
+& $python run.py --help
+& $python run.py -c configs/SeedFC_Aseries_noGSR.yaml --stage seedfc --dry-run
+```
+
+上面的 SeedFC 检查命令已在本机验证。正式配置采用 22 个 seed，目前完整记录数为 0，真实几何运行暂缓。原生 FC 入口还需先在配置中设置实际可用的处理后信号和 mask 路径。
+
 P3 新增的几何计算、来源插件和跨系列比较可从本目录运行：
 
 ```powershell
