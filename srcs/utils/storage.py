@@ -60,3 +60,17 @@ def save_pickle(path, value):
 
 def save_table(path, frame, index=True):
     _atomic(path, lambda stream: frame.to_csv(stream, index=index))
+
+
+def save_arrays(path, metadata, **arrays):
+    _atomic(path, lambda stream: np.savez_compressed(
+        stream, metadata=np.asarray(json.dumps(metadata, ensure_ascii=False)), **arrays), binary=True)
+
+
+def load_arrays(path, schema):
+    with np.load(path, allow_pickle=False) as data:
+        metadata = json.loads(str(data["metadata"]))
+        if metadata.get("schema") != schema:
+            raise ValueError(f"Unsupported schema: {path}")
+        arrays = {k: data[k] for k in data.files if k != "metadata"}
+    return metadata, arrays

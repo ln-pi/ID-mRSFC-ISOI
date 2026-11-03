@@ -12,7 +12,7 @@ from srcs.visualization.combined import plot
 def run(ctx):
     stat = pd.read_pickle(ctx.statistics_path)
     metadata = statistics_metadata(ctx, stat)
-    path = Path(ctx.output_path) / "results/statistics/individual_identifiability.csv"
+    path = Path(ctx.output_dir("results","statistics",create=False))/"individual_identifiability.csv"
     frame = pd.read_csv(path)
     enabled = ctx.render_options()["save"] or ctx.render_options()["show"]
     axis = "week" if metadata["split_axis"] == "run" else "run"

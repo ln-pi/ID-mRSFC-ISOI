@@ -76,6 +76,12 @@ def process_recording(ctx, week, mouse, run):
     return dict(input_path=raw_path)
 
 
+from srcs.core.runtime import numerical_stage
+
+OPTION_KEYS = ("preprocess",)
+
+
+@numerical_stage("preprocess", OPTION_KEYS)
 def run(ctx):
     report = BatchReport(ctx, "01_preprocess")
     total = len(ctx.weeks) * len(ctx.mice) * len(ctx.runs)

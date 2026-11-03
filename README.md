@@ -4,6 +4,10 @@ A Python workflow for studying individual differences and longitudinal changes i
 
 The project connects acquisition-level preprocessing, cortical functional connectivity (FC), individual identification, and longitudinal network analysis. Each mouse, week, and recording Run remains identifiable throughout the workflow, supporting both comparisons of individual recordings and comparisons of connectivity patterns averaged across observations.
 
+## P3 high-dimensional workflow
+
+See [workflow](docs/workflow.md), [geometry methods](docs/geometry_methods.md), and [SeedFC input contract](docs/plugin_contract.md). Geometry and inference run after the edge store. Saved outputs support offline HTML/PDF reports and independent A/N or paired GSR comparisons.
+
 ## Features
 
 - OIS binary recording conversion, Suite2p motion correction, and interactive atlas registration.
@@ -176,7 +180,7 @@ python run.py -c configs/Aseries.yaml --stage report --report-section longitudin
 Results are organized by configuration:
 
 ```text
-data/output/<analysis_tag>/<dataset>/
+data/output/<data_tag>/
 ├── correlation/             Labeled FC matrices
 ├── results/
 │   ├── edges/               FC edge arrays, labels, and recording masks

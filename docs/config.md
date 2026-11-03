@@ -1,6 +1,6 @@
 # 配置与数组契约
 
-配置使用 YAML；相对路径以 main 根目录解析，绝对路径保持绝对路径语义。`configs/default.yaml` 是可用的 A 系列示例，不再是全 null 的占位模板。Aseries/Nseries 保留当前 10 鼠配置名单，实际分析鼠数由审计决定。
+配置使用 YAML；相对路径以 P3 工作树根目录解析，绝对路径保持绝对路径语义。`configs/default.yaml` 是可用的 A 系列示例，不再是全 null 的占位模板。Aseries/Nseries 保留当前 10 鼠配置名单，实际分析鼠数由审计决定。
 
 ## 配置字段
 
@@ -28,7 +28,7 @@
 | descriptive.reference_week | 自身变化参照；默认 03w |
 | visualization | FC、combined 与统计图参数；pairwise 报告统一 r 色阶 [-1,1] |
 
-完整 parsed config 仍参与输出哈希，绘图参数也会改变结果目录。没有把源预处理身份、分析身份、绘图身份静默拆为新缓存体系。根入口接受 `--configs` 顺序批处理，默认 Aseries 和 Nseries；`--import-fc` 要求单一 `-c` 并从 edges 开始。`--report-section` 是运行选择参数，不修改配置身份，可单独重绘 pairwise/combined/statistics；`--report-root` 指定批次状态记录目录。
+数据范围、来源和处理选项及计算代码决定 data_tag。metadata/data_identity.json 保存数据身份。数值阶段在 metadata/stages 中记录自己的选项、输入和产品摘要；同目录内根据依赖重算。显示参数只影响报告。--tag 可追加目录后缀。
 
 已移除 Session_ids/Trial_ids、数值 group_mode 12/13/14、非空 repeat_id、supplement/DD/ND、重复固定配对的 Edge.repeat，以及无任何数值消费者的 Edge.seed。旧数字脚本入口改为根 run.py/run.ps1；不对旧 YAML 进行隐式转换。
 
@@ -53,7 +53,7 @@
 
 ## 每 Run 的 S
 
-`results/pairwise/<atlas>/<run_id>.npz`，schema=`pairwise_similarity_v1`：
+`results/pairwise/v1/<atlas>/<run_id>.npz`，schema=`pairwise_similarity_v1`：
 
 | 键 | 形状/口径 |
 | --- | --- |
@@ -68,9 +68,11 @@
 无效位置 S_r/S_z=NaN；同一采集自比较 S_r=1、S_z=NaN。不同采集恰好相关 ±1 时使用 nextafter 边界得到有限 z，并明确记录此规则。周对面板行=i@u、列=j@v，反向面板为转置。
 
 ```python
-from srcs.analysis.connectome import EdgeStore, load_arrays, SIM_SCHEMA
+from srcs.utils.edge_store import EdgeStore
+from srcs.utils.storage import load_arrays
+from srcs.analysis.connectome import SIM_SCHEMA
 store = EdgeStore.load("/absolute/output/results/edges/AUDv.npz")
-meta, values = load_arrays("/absolute/output/results/pairwise/AUDv/Run01.npz", SIM_SCHEMA)
+meta, values = load_arrays("/absolute/output/results/pairwise/v1/AUDv/Run01.npz", SIM_SCHEMA)
 panel = values["S_r"][:, :, 4, 7]       # 04w → 07w (按保存标签核对位置)
 trajectory = values["S_r"][0, 0, :, :]  # 第一只鼠的跨周自身矩阵
 ```
@@ -225,17 +227,17 @@ python run.py --stage report --report-section longitudinal
 
 | 位置 | 内容 |
 | --- | --- |
-| results/stability/repeatability.csv | 原始/共同模板 ΔFC 的 Run 重复性与均值—差值 |
-| results/stability/residual_pairs.csv | 逐鼠、视图、队列的唯一跨周 ΔFC 相似 |
-| results/stability/edge_icc.csv / regional_icc.csv | 逐边方差/ICC/区间、区域汇总 |
-| results/stability/cohorts.csv | 平衡模型的保留/排除原因 |
-| results/stability/&lt;atlas&gt;/variance_components.npz | 方差、ICC、稳定/鼠×周 BLUP、残差、设计标签 |
-| results/stability/&lt;atlas&gt;/residual_&lt;cohort&gt;.npz | N×V×W×W 残差相似矩阵及有效掩码 |
-| results/longitudinal/dispersion.csv / trends.csv | 逐周区间、整体斜率区间和方向标签 |
-| results/longitudinal/subjects.csv / rank_pairs.csv | 逐鼠轨迹、描述性斜率、共同鼠排名保持 |
-| results/longitudinal/random_slopes.csv / mouse_slopes.csv | 网络模型、条件逐鼠斜率 |
-| results/longitudinal/models.json / model_diagnostics.csv | 结构化模型诊断与逐记录拟合值/残差 |
-| results/longitudinal/&lt;atlas&gt;/trajectories_&lt;cohort&gt;.npz | W×V 离散度、2×W×V 区间、N×W×V 偏离度、群体 FC/相邻周变化 |
+| results/stability/v1/repeatability.csv | 原始/共同模板 ΔFC 的 Run 重复性与均值—差值 |
+| results/stability/v1/residual_pairs.csv | 逐鼠、视图、队列的唯一跨周 ΔFC 相似 |
+| results/stability/v1/edge_icc.csv / regional_icc.csv | 逐边方差/ICC/区间、区域汇总 |
+| results/stability/v1/cohorts.csv | 平衡模型的保留/排除原因 |
+| results/stability/v1/&lt;atlas&gt;/variance_components.npz | 方差、ICC、稳定/鼠×周 BLUP、残差、设计标签 |
+| results/stability/v1/&lt;atlas&gt;/residual_&lt;cohort&gt;.npz | N×V×W×W 残差相似矩阵及有效掩码 |
+| results/longitudinal/v1/dispersion.csv / trends.csv | 逐周区间、整体斜率区间和方向标签 |
+| results/longitudinal/v1/subjects.csv / rank_pairs.csv | 逐鼠轨迹、描述性斜率、共同鼠排名保持 |
+| results/longitudinal/v1/random_slopes.csv / mouse_slopes.csv | 网络模型、条件逐鼠斜率 |
+| results/longitudinal/v1/models.json / model_diagnostics.csv | 结构化模型诊断与逐记录拟合值/残差 |
+| results/longitudinal/v1/&lt;atlas&gt;/trajectories_&lt;cohort&gt;.npz | W×V 离散度、2×W×V 区间、N×W×V 偏离度、群体 FC/相邻周变化 |
 | report/stability / report/longitudinal | PNG/PDF、索引；无需源 FC/edge cache 的独立重绘 |
 
 两阶段各有 methods/index.json，保存 schema、数值输入 SHA256、完整规则、代码和 Statsmodels 等依赖版本。它们与幅度/拓扑 v2 分开保存，不改写旧指标的含义。

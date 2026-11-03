@@ -9,9 +9,15 @@ from srcs.analysis.identification import identify, permutation_test
 from srcs.utils.dataset import select_complete_cohort, analysis_plan
 from srcs.utils.edge_store import load_store, store_path
 from srcs.utils.provenance import sha256
-from srcs.utils.results import save_json, save_pickle, save_table
+from srcs.utils.storage import save_json, save_pickle, save_table
 
 
+from srcs.core.runtime import numerical_stage
+
+OPTION_KEYS = ("analysis", "ID",)
+
+
+@numerical_stage("combined", OPTION_KEYS)
 def run(ctx):
     mice, audit = select_complete_cohort(ctx)
     weeks = audit["retained_weeks"]

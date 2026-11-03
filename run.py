@@ -17,7 +17,7 @@ def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] == '--worker':
         os.chdir(ROOT)
-        from srcs.utils.pipeline import main as worker
+        from srcs.workflow.worker import main as worker
         return worker(argv[1:])
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     configs = parser.add_mutually_exclusive_group()
@@ -56,7 +56,7 @@ def main(argv=None):
         config = (ROOT / config).resolve()
         if not config.is_file():
             parser.error(f'Configuration does not exist: {config}')
-    from srcs.utils.series_workflow import run_batch
+    from srcs.workflow.batch import run_batch
     code, _ = run_batch(configs, project_root=ROOT, stage=args.stage, start=args.start,
         dry_run=args.dry_run, import_source=args.import_fc, report_section=args.report_section,
         report_root=args.report_root, tag=args.tag)

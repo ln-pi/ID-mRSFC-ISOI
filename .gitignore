@@ -9,5 +9,7 @@ reports/
 /docs/*
 !/docs/config.md
 !/docs/workflow.md
+!/docs/geometry_methods.md
+!/docs/plugin_contract.md
 !/docs/automatic_workflow.md
 !/docs/visualization_report.md

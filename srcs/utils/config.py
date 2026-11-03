@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 from pathlib import Path
 from argparse import Namespace
-from srcs.utils.output_paths import output_parts
+from srcs.utils.layout import output_parts
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -90,7 +90,7 @@ class RunContext:
     @property
     def processed_path(self):
         base = os.path.join(self.processed_root, self.dataset)
-        return base if self.section("preprocess").get("gsr",True) else os.path.join(base,"noGSR")
+        return base if self.config.get("preprocess",{}).get("gsr",True) else os.path.join(base,"noGSR")
 
     @property
     def output_path(self):
@@ -131,7 +131,7 @@ class RunContext:
 
     @property
     def correlation_path(self):
-        from srcs.utils.output_paths import correlation_folder
+        from srcs.utils.layout import correlation_folder
         return str(correlation_folder(self.output_path))
 
     @property
@@ -146,7 +146,7 @@ class RunContext:
         return os.path.join(self.output_dir("Identification", create=False), self.statistics_file)
 
     def save_analysis_metadata(self, selection=None):
-        from srcs.utils.results import save_json
+        from srcs.utils.storage import save_json
         save_json(os.path.join(self.output_dir("Metadata"), "analysis_config.json"), {
             "config": self.config, "split_axis": self.split_axis,
             "selection_mode": self.selection_mode, "session_seed": self.session_seed,
@@ -155,7 +155,22 @@ class RunContext:
         })
 
     def section(self, name, default=None):
+        stage=getattr(self,"stage",None)
+        if stage is not None:
+            return stage.section(name)
         return self.config.get(name, default or {})
+
+    def execute_stage(self,name,action):
+        from srcs.workflow.records import run_cached
+        return run_cached(self,name,action)
+
+    @property
+    def inputs(self):
+        return self.stage.inputs
+
+    @property
+    def data_tag(self):
+        return self.analysis_tag
 
     def viz(self, name=None, default=None):
         visualization = self.config.get("visualization", {})
@@ -186,6 +201,14 @@ class RunContext:
     def output_dir(self, *parts, create=True):
         mapped = output_parts(parts)
         base = self.output_path
+        if mapped and mapped[0] == "results/combined":
+            mapped = ("results","combined",*mapped[1:])
+        if len(mapped)>=2 and mapped[0]=="results" and mapped[1] in (
+            "combined","pairwise","stability","longitudinal","statistics"
+        ):
+            versioned = Path(base)/mapped[0]/mapped[1]/"v1"
+            if not getattr(self.args,"saved_output",None) or versioned.is_dir():
+                mapped = (*mapped[:2],"v1",*mapped[2:])
         if mapped and mapped[0].split("/")[0] == "report":
             base = getattr(self.args,"redraw_root",base)
         path = os.path.join(base, *mapped)

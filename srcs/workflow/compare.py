@@ -9,7 +9,8 @@ import pandas as pd
 from srcs.core.artifacts import publish, sha256, write_json
 from srcs.core.identity import code_closure, digest
 from srcs.utils.config import PROJECT_ROOT
-from srcs.utils.results import save_table
+from srcs.utils.storage import save_table
+from srcs.analysis.geometry.discriminability import score
 
 
 def load_products(root):
@@ -51,6 +52,30 @@ def compare(first,second,output_root=None,seed=42,repeats=200):
     if paired and (set(a["scope"]["mice"])!=set(b["scope"]["mice"]) or
                    set(map(tuple,x[keys].values))!=set(map(tuple,y[keys].values))):
         raise ValueError("Paired branches differ in mouse or valid acquisition membership")
+    groups=["atlas","cohort","week","run"]
+    common_n=pd.concat([x.groupby(groups).mouse.nunique(),y.groupby(groups).mouse.nunique()],
+                       axis=1,join="inner").min(axis=1)
+    for root,frame in ((left,x),(right,y)):
+        matrix=pd.read_csv(root/"results/geometry/v1/distances.csv")
+        matrix=matrix[(matrix.metric=="rms")&(matrix.query!=matrix.reference)]
+        scores=[]
+        for key,part in matrix.groupby(["atlas","cohort","week","query","reference","mouse"]):
+            if key[:4] not in common_n:
+                continue
+            own=np.flatnonzero(part.other.to_numpy()==key[-1])
+            if len(own)!=1:
+                raise ValueError(f"Missing or duplicated self reference: {key}")
+            others=np.flatnonzero(part.other.to_numpy()!=key[-1])
+            count=min(9,int(common_n[key[:4]])-1,len(others))
+            subsampler=np.random.default_rng(int(digest([seed,*key])[:16],16))
+            selected=subsampler.choice(others,count,replace=False)
+            result=score(part.distance.to_numpy(),own[0],selected)
+            scores.append(dict(zip(["atlas","cohort","week","run","reference","mouse"],key),
+                               q=result["q"],margin=result["margin"]))
+        if scores:
+            updated=pd.DataFrame(scores).groupby(keys).agg({"q":"mean","margin":"mean"})
+            aligned=updated.reindex(pd.MultiIndex.from_frame(frame[keys]))
+            frame[["q","margin"]]=aligned[["q","margin"]].to_numpy()
     payload=dict(schema="compare_identity_v1",a=digest(a),b=digest(b),inputs=[ha,hb],mode="paired" if paired else "independent",
                  code=digest(code_closure(PROJECT_ROOT,"srcs.workflow.compare")),seed=seed,repeats=repeats)
     folder=(Path(output_root) if output_root else left.parent)/"_compare"/(left.name+"__vs__"+right.name+"_"+digest(payload)[:8])/"results/compare/v1"
@@ -64,15 +89,15 @@ def compare(first,second,output_root=None,seed=42,repeats=200):
         if not len(indices):
             return None
         sample=points[indices]
-        return sample.mean(axis=0), np.var(sample,axis=0,ddof=1).mean() if len(sample)>1 else np.nan, scores[indices].mean()
+        return (sample.mean(axis=0), np.var(sample,axis=0,ddof=1).mean() if len(sample)>1 else np.nan,
+                *pd.DataFrame(scores[indices]).mean().to_numpy())
     def gap(ma,mb):
         if ma is None or mb is None:
-            return [np.nan]*3
-        return [np.sqrt(np.mean((ma[0]-mb[0])**2)),mb[1]-ma[1],mb[2]-ma[2]]
+            return [np.nan]*4
+        return [np.sqrt(np.mean((ma[0]-mb[0])**2)),mb[1]-ma[1],mb[2]-ma[2],mb[3]-ma[3]]
     def intervals(values):
         finite=values[np.isfinite(values)]
         return np.quantile(finite,[.05,.95]).tolist() if len(finite) else [np.nan,np.nan]
-    groups=["atlas","cohort","week","run"]
     group_b={key:part for key,part in y.groupby(groups)}
     trajectories={}
     for key,p in x.groupby(groups):
@@ -81,7 +106,7 @@ def compare(first,second,output_root=None,seed=42,repeats=200):
         sides=[]
         for part,draws in ((p,draws_a),(group_b[key],draws_b)):
             pts=np.stack(part.point)
-            scores=part.q.to_numpy()
+            scores=part[["q","margin"]].to_numpy()
             lookup={m:i for i,m in enumerate(part.mouse)}
             sides.append([measures(pts,scores,np.arange(len(pts)))]+[
                 measures(pts,scores,[lookup[m] for m in sample if m in lookup]) for sample in draws])
@@ -91,6 +116,10 @@ def compare(first,second,output_root=None,seed=42,repeats=200):
             rows[name].append(dict(zip(groups,key),estimate=values[0,j],low=low,high=high,
                                    interval="sensitivity_range"))
             trajectories.setdefault((key[0],key[1],key[3],name),[]).append((key[2],values[:,j]))
+        margin_low,margin_high=intervals(values[1:,3])
+        rows["q_gap"][-1].update(margin_gap=values[0,3],margin_low=margin_low,margin_high=margin_high,
+                                 n_foreign=min(9,int(common_n[key])-1))
+        trajectories.setdefault((key[0],key[1],key[3],"margin_gap"),[]).append((key[2],values[:,3]))
     for key,items in trajectories.items():
         labels,values=zip(*items)
         cfg=json.loads((left/"metadata/analysis_config.json").read_text(encoding="utf-8"))["config"]
@@ -105,10 +134,24 @@ def compare(first,second,output_root=None,seed=42,repeats=200):
                                       slope=slopes[0],low=low,high=high,interval="sensitivity_range"))
     folder.mkdir(parents=True,exist_ok=True)
     paths=[]
+    from sklearn.decomposition import PCA
+    display=pd.concat([x.assign(side="first"),y.assign(side="second")],ignore_index=True)
+    for _,part in display.groupby(["atlas","cohort"]):
+        if len(part)<2:
+            continue
+        model=PCA(n_components=2,svd_solver="full")
+        display.loc[part.index,["pc1","pc2"]]=model.fit_transform(np.stack(part.point))
+        display.loc[part.index,"variance_pc1"]=model.explained_variance_ratio_[0]
+        display.loc[part.index,"variance_pc2"]=model.explained_variance_ratio_[1]
+    projection=folder/"projection.csv"
+    save_table(projection,display.drop(columns="point"),index=False)
+    paths.append(projection)
     for name,table in rows.items():
         path=folder/(name+".csv")
         save_table(path,pd.DataFrame(table),index=False)
         paths.append(path)
     write_json(folder/"identity.json",payload)
     publish(folder/"index.json","comparison_v1","comparison_v1",paths+[folder/"identity.json"])
+    from srcs.visualization.comparison import render
+    render(folder,left.name,right.name,paired)
     return folder

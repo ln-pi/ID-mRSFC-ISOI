@@ -7,7 +7,7 @@ from pathlib import Path
 
 from srcs.utils.config import load_context
 from srcs.utils.fc_import import import_fc
-from srcs.utils.results import save_json
+from srcs.utils.storage import save_json
 from srcs.workflow import STAGES, MODULES
 
 def validate(ctx, stage, importing=False):
@@ -37,16 +37,16 @@ def validate(ctx, stage, importing=False):
             print(f"{store.metadata['atlas']}: F {store.F_r.shape}; valid {store.valid_record.sum()}/{store.valid_record.size}")
         if stage == 'pairwise':
             from srcs.analysis.pairwise import selections, week_positions
-            selections(ctx)
-            week_positions(ctx)
+            selections(ctx.weeks, ctx.section("pairwise"))
+            week_positions(ctx.weeks, ctx.section("pairwise").get("week_positions"))
         if stage in ('stability', 'longitudinal'):
-            from srcs.utils.analysis_products import bootstrap_options, descriptive_products
+            from srcs.workflow.products import bootstrap_options, descriptive_products
             bootstrap_options(ctx, stage)
             for atlas in ctx.atlases:
                 descriptive_products(ctx, '_'.join(atlas))
             if stage == 'longitudinal':
                 from srcs.analysis.pairwise import week_positions
-                week_positions(ctx)
+                week_positions(ctx.weeks, ctx.section("pairwise").get("week_positions"))
         if stage == 'combined':
             from srcs.utils.dataset import select_complete_cohort
             mice, audit = select_complete_cohort(ctx)
@@ -67,7 +67,7 @@ def validate(ctx, stage, importing=False):
         section = getattr(ctx.args, 'report_section', 'all')
         paths = list(inputs.values()) if section == 'all' else [inputs[section]]
         if not any(path.is_file() for path in paths):
-            raise FileNotFoundError(f'No saved numerical input for report section {section}')
+            print(f"No saved products for {section}; section will be marked skipped")
 
 
 def main(argv=None):
@@ -83,6 +83,14 @@ def main(argv=None):
     args = parser.parse_args(argv)
     ctx = load_context(args.config, create_dirs=False)
     ctx.args.tag = args.tag
+    if args.dry_run:
+        return execute(ctx,args,parser)
+    from srcs.core.runtime import exclusive_run
+    with exclusive_run(Path(ctx.output_path)/"metadata/workflow.lock"):
+        return execute(ctx,args,parser)
+
+
+def execute(ctx,args,parser):
     identity_path = Path(ctx.output_path) / "metadata/data_identity.json"
     if identity_path.exists() and json.loads(identity_path.read_text(encoding="utf-8")) != ctx.data_identity:
         raise ValueError("Data identity collision; use a distinct --tag")
@@ -117,11 +125,7 @@ def main(argv=None):
         ctx.logger.info('Starting stage: %s', stage)
         try:
             action = importlib.import_module(MODULES[stage]).run
-            if stage == "report":
-                action(ctx)
-            else:
-                from srcs.workflow.records import run_cached
-                run_cached(ctx, stage, action)
+            action(ctx)
         except BaseException as exc:
             state.update(status='interrupted' if isinstance(exc, KeyboardInterrupt) else 'failed', reason=str(exc))
             save_json(marker, state)

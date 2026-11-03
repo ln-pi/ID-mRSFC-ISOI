@@ -49,7 +49,7 @@ def select_complete_cohort(ctx):
         raise ValueError("At least one atlas is required")
     # Validate public options before reading data; cover always operates on weeks.
     _ = ctx.split_axis, ctx.selection_mode
-    from srcs.utils.output_paths import fc_reports
+    from srcs.utils.layout import fc_reports
     from srcs.utils.fc_import import verify_import
     verify_import(ctx)
     reports = fc_reports(ctx.output_path)

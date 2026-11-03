@@ -1,15 +1,15 @@
 # 统一流程
 
-工作根目录为 `F:/Projects/ID-mRSFC-ISOI/main`。入口不依赖 VS Code debug 或手工设置 PYTHONPATH。
+工作根目录为 `F:/Projects/ID-mRSFC-ISOI/P3_HighDimension`。入口不依赖 VS Code debug 或手工设置 PYTHONPATH。
 
 ```powershell
 conda activate ID-mRSFC-ISOI
-Set-Location F:\Projects\ID-mRSFC-ISOI\main
+Set-Location F:\Projects\ID-mRSFC-ISOI\P3_HighDimension
 python run.py --dry-run
 .\run.ps1 --dry-run
 ```
 
-`run.ps1` 默认调用已激活环境的 python；也可通过 `ISOI_PYTHON` 指定解释器绝对路径。两种入口传递相同参数和退出码。相对配置及数据路径都以 main 为基准；参考 P2 的协调器按配置、阶段启动独立 worker。任意阶段失败返回非零码并停止后续工作；执行计划、阶段退出码和整体状态写入 `reports/automatic/<UTC时间_标识>/batch_summary.json`，可用 `--report-root` 改位置。
+`run.ps1` 默认调用已激活环境的 python；也可通过 `ISOI_PYTHON` 指定解释器绝对路径。两种入口传递相同参数和退出码。相对配置及数据路径都以 P3 工作树为基准；参考 P2 的协调器按配置、阶段启动独立 worker。任意阶段失败返回非零码并停止后续工作；执行计划、阶段退出码和整体状态写入 `reports/automatic/<UTC时间_标识>/batch_summary.json`，可用 `--report-root` 改位置。
 
 ## 阶段
 
@@ -18,8 +18,12 @@ python run.py --dry-run
 | preprocess | 每个 week/mouse/run 的 info.txt、img*.bin | Suite2p 校正、人工 atlas 配准、FiltDRR |
 | fc | 分别计算的每次采集信号、ROI mask | 带 ROI 标签的周 FC 表、逐记录审计 |
 | edges | FC 表及审计 | 完整 N×W×Run×E 边数组 |
+| geometry | edge store | 距离、同周跨 Run 可分辨性、交叉验证差异与投影 |
+| inference | geometry 数值 | 逐周主终点、整鼠敏感性与趋势 |
 | pairwise | edge store | 每分区、每 Run 的 N×N×W×W；阶段选择与逐鼠指标 |
 | descriptive | edge store | 同日模式相关/RMS/偏移、03w 变化、同组 LOO 偏离、ΔFC/逐边方差 |
+| stability | descriptive v2 与 edge store | 逐边方差分量与稳定性 |
+| longitudinal | descriptive v2 与 edge store | 整鼠轨迹和网络随机斜率 |
 | combined | edge store；strict/cover 选择规则 | P1 汇总 ID、shuffle、Phi/DP |
 | statistics | 保存的 combined 数值 | 逐鼠自身匹配优势/百分位、重复测量统计与表 |
 | report | 保存的 pairwise、combined、statistics 数值 | 阶段图、ID/edge 图、统计图及输入校验索引 |
@@ -36,7 +40,7 @@ python run.py -c configs/Nseries.yaml --stage report --report-section combined
 python run.py -c configs/Nseries.yaml --stage report --report-section statistics
 ```
 
-`report` 默认绘制所有已有数值结果；`--report-section` 可选 `pairwise/descriptive/stability/longitudinal/combined/statistics/all`。combined 和 statistics 阶段不再直接绘图，统计数值统一写入 `results/statistics/`，原 `report/tables/` 中初版遗留文件不作为新流程输入。独立重绘无需原始 FC 表和 edge cache，也不会改写 `results/`。FC 阶段仍可生成采集诊断图，生成逻辑位于 visualization，不在 FC 计算核心中。
+`report` 默认绘制所有已有数值结果；`--report-section` 可选 `geometry/pairwise/descriptive/stability/longitudinal/combined/statistics/all`。combined 和 statistics 阶段不再直接绘图，统计数值统一写入 `results/statistics/`，原 `report/tables/` 中初版遗留文件不作为新流程输入。独立重绘无需原始 FC 表和 edge cache，也不会改写 `results/`。FC 阶段仍可生成采集诊断图，生成逻辑位于 visualization，不在 FC 计算核心中。
 
 幅度与拓扑分析：
 
@@ -55,7 +59,7 @@ python run.py -c configs/Aseries.yaml --stage edges --import-fc "F:\path\to\save
 python run.py -c configs/Aseries.yaml --start edges --import-fc "F:\path\to\saved_output"
 ```
 
-接受单次输出根目录或其 correlation/Correlation 子目录。只读取可信本地 PKL；导入保持原字节，先核验全部表、范围、ROI 顺序及已有目标，再写入 main 的独立输出。缺失单元格保留为缺失。格式损坏或源审计不一致直接失败，不会为了导入而改变鼠名单。没有源审计时从单元格重建，并注明来源资料缺失。
+接受单次输出根目录或其 correlation/Correlation 子目录。只读取可信本地 PKL；导入保持原字节，先核验全部表、范围、ROI 顺序及已有目标，再写入 P3 工作树的独立输出。缺失单元格保留为缺失。格式损坏或源审计不一致直接失败，不会为了导入而改变鼠名单。没有源审计时从单元格重建，并注明来源资料缺失。
 
 新路径使用小写 correlation。仅有历史大写目录时允许读取；在区分大小写的文件系统发现两个不同目录则报错。源配置、原始 FC SHA256 和审计被记录。导入路径本身不能证明 GSR/Suite2p 等处理等价，也不表示本次决定了正式主分析的预处理来源。
 
@@ -93,7 +97,7 @@ python run.py --stage report --report-section longitudinal
 ## 验证
 
 ```powershell
-python -m unittest discover -s tests -v
+python -m unittest discover -s validation -v
 ```
 
 幅度与拓扑检查包含独立公式恒等式、缺失与常量模式、ROI/网络贡献守恒及独立重绘。详细参数见 [数据契约](config.md)。

@@ -6,17 +6,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from srcs.analysis.connectome import load_arrays
+from srcs.utils.storage import load_arrays
 from srcs.analysis.stability import SCHEMA
 from srcs.analysis.topology import edge_matrix
-from srcs.utils.analysis_products import verified_index
+from srcs.workflow.products import verified_index
 from srcs.utils.provenance import sha256
-from srcs.utils.results import save_json
+from srcs.utils.storage import save_json
 from srcs.visualization.descriptive import _heat, _upper
 
 
 def run(ctx):
-    source = Path(ctx.output_path)/"results/stability/index.json"
+    source = Path(ctx.output_dir("results","stability",create=False))/"index.json"
     index = verified_index(source)
     if index["schema"] != SCHEMA:
         raise ValueError("Unsupported stability schema")

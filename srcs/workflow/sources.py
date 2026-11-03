@@ -7,7 +7,12 @@ from srcs.core.identity import code_closure, digest
 def active_source(config, root):
     enabled = []
     known = {}
-    for path in sorted((Path(root)/"plugins").glob("*/plugin.yaml")):
+    for directory in sorted((Path(root)/"plugins").glob("*")):
+        if not directory.is_dir() or directory.name=="__pycache__":
+            continue
+        path=directory/"plugin.yaml"
+        if not path.is_file():
+            raise ValueError(f"Missing source declaration: {directory}")
         spec = yaml.safe_load(path.read_text(encoding="utf-8"))
         if spec["kind"] != "source" or spec["id"] != path.parent.name:
             raise ValueError(f"Invalid source plugin: {path}")
@@ -35,4 +40,13 @@ def source_code(spec,root):
     listed = sorted(p.relative_to(folder).as_posix() for p in folder.rglob("*.py"))
     if sorted(spec["numerics"]) != listed:
         raise ValueError("Source numerics must cover all Python files")
-    return digest([spec,code_closure(root,"plugins."+spec["id"])])
+    closure={}
+    for filename in listed:
+        parts=list(Path(filename).with_suffix("").parts)
+        if parts[-1]=="__init__":
+            parts.pop()
+        module=".".join(["plugins",spec["id"],*parts])
+        closure.update(code_closure(root,module))
+    for module in spec.get("kernel",[]):
+        closure.update(code_closure(root,module))
+    return digest([spec,closure])

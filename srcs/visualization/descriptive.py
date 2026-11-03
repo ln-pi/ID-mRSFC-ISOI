@@ -7,11 +7,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from srcs.analysis.connectome import load_arrays
+from srcs.utils.storage import load_arrays
 from srcs.analysis.magnitude import SCHEMA
 from srcs.analysis.topology import edge_matrix
 from srcs.utils.provenance import sha256
-from srcs.utils.results import save_json
+from srcs.utils.storage import save_json
 
 
 def _upper(values, fallback=1.):

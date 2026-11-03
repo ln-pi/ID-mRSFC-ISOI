@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
-from srcs.utils.results import save_json
+from srcs.utils.storage import save_json
 
 
 class BatchReport:

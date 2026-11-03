@@ -7,7 +7,7 @@ from srcs.analysis.connectivity import valid_fc
 from srcs.core.artifacts import sha256
 from srcs.core.identity import digest
 from srcs.utils.config import PROJECT_ROOT
-from srcs.utils.results import save_json, save_pickle
+from srcs.utils.storage import save_json, save_pickle
 
 
 def locations(ctx, options):
@@ -22,8 +22,14 @@ def input_files(ctx, options):
     return {str(p): sha256(p) if p.is_file() else None for *_,p in locations(ctx,options)}
 
 
+from srcs.core.runtime import numerical_stage
+
+OPTION_KEYS = ("plugins",)
+
+
+@numerical_stage("seedfc", OPTION_KEYS)
 def run(ctx, dry_run=False):
-    options = ctx.config["plugins"]["seedfc"]["options"]
+    options = ctx.section("plugins")["seedfc"]["options"]
     partitions = options["partitions"]
     if list(partitions) != ["_".join(a) for a in ctx.atlases]:
         raise ValueError("SeedFC partitions must match configured atlas order")
@@ -34,6 +40,10 @@ def run(ctx, dry_run=False):
         matrix = None
         if path.exists():
             with np.load(path,allow_pickle=False) as data:
+                expected={"group":options["series"],"session":w,"mouse":m,"run":r,"branch":options["branch"]}
+                for key,value in expected.items():
+                    if key in data and str(data[key].item())!=value:
+                        raise ValueError(f"SeedFC {key} differs from path: {path}")
                 labels = data["seed_names"].astype(str).tolist()
                 if len(set(labels)) != len(labels) or (basis is not None and basis != labels):
                     raise ValueError(f"Inconsistent SeedFC labels: {path}")

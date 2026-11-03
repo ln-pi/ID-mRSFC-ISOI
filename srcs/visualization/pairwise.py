@@ -6,9 +6,10 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from srcs.analysis.connectome import load_arrays, SIM_SCHEMA
+from srcs.utils.storage import load_arrays
+from srcs.analysis.connectome import SIM_SCHEMA
 from srcs.utils.provenance import sha256
-from srcs.utils.results import save_json
+from srcs.utils.storage import save_json
 
 
 def display_options(ctx):
@@ -34,7 +35,7 @@ def range_audit(values, mask, low, high):
 
 
 def run(ctx):
-    source = Path(ctx.output_path) / "results/pairwise/selection.json"
+    source = Path(ctx.output_dir("results","pairwise",create=False))/"selection.json"
     selection = json.loads(source.read_text(encoding="utf-8"))
     products = {(p["atlas"], p["run"]): p for p in selection["products"]}
     folder = Path(ctx.output_dir("report", "pairwise"))

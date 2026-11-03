@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from srcs.utils.output_paths import fc_reports, correlation_folder
-from srcs.utils.results import _atomic, save_json
+from srcs.utils.layout import fc_reports, correlation_folder
+from srcs.utils.storage import _atomic, save_json
 
 
 def digest(path):

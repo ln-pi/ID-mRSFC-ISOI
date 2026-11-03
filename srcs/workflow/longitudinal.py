@@ -4,17 +4,23 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from srcs.analysis.connectome import save_arrays
+from srcs.utils.storage import save_arrays
 from srcs.analysis.longitudinal import SCHEMA, dispersion_trajectory, linear_slope, random_slopes, rank_persistence
 from srcs.analysis.magnitude import select_views
 from srcs.analysis.pairwise import week_positions
 from srcs.analysis.topology import edge_layout
-from srcs.utils.analysis_products import bootstrap_options, descriptive_products, publish
+from srcs.workflow.products import bootstrap_options, descriptive_products, publish
 from srcs.utils.edge_store import load_store
 from srcs.utils.provenance import code_identity, sha256
-from srcs.utils.results import save_json
+from srcs.utils.storage import save_json
 
 
+from srcs.core.runtime import numerical_stage
+
+OPTION_KEYS = ("longitudinal", "descriptive", "pairwise",)
+
+
+@numerical_stage("longitudinal", OPTION_KEYS)
 def run(ctx):
     folder = Path(ctx.output_dir("results", "longitudinal"))
     count, seed = bootstrap_options(ctx, "longitudinal")
@@ -28,7 +34,7 @@ def run(ctx):
     tables = {key: [] for key in ("dispersion", "trends", "subjects", "rank_pairs", "random_slopes", "mouse_slopes", "model_diagnostics")}
     products, sources = [], []
     code = code_identity()
-    positions = week_positions(ctx)
+    positions = week_positions(ctx.weeks, ctx.section("pairwise").get("week_positions"))
     for atlas in ["_".join(a) for a in ctx.atlases]:
         store = load_store(ctx, atlas)
         descriptive, source = descriptive_products(ctx, atlas)

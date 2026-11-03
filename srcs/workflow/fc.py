@@ -4,12 +4,18 @@ from tqdm import tqdm
 
 from srcs.utils.batch import BatchReport
 from srcs.utils.dataset import resolve_recording
-from srcs.utils.results import save_pickle
-from srcs.analysis.connectivity import CorrelationCache
-from srcs.visualization.fc import render_fc
+from srcs.utils.storage import save_pickle
+from srcs.utils.record_fc import CorrelationCache
 
 
+from srcs.core.runtime import numerical_stage
+
+OPTION_KEYS = ("correlation",)
+
+
+@numerical_stage("fc", OPTION_KEYS)
 def run(ctx):
+    from srcs.visualization.fc import render_fc
     if (Path(ctx.output_path) / 'metadata/fc_import_provenance.json').exists():
         raise ValueError('Imported FC output: start edges, or use a separate config to recompute FC')
     report = BatchReport(ctx, "02_correlation")

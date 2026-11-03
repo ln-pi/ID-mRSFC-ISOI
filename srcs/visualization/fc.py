@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from PIL import Image
 from srcs.visualization.plot_series import save_fc_heatmap
-from srcs.utils.results import save_json
+from srcs.utils.storage import save_json
 
 
 def render_fc(ctx, frame, stem, resume=True):

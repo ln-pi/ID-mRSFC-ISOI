@@ -1,15 +1,22 @@
 """Persist per-Run tensors and the outputs of pure pairwise analysis."""
 from pathlib import Path
 import pandas as pd
-from srcs.analysis.connectome import pairwise_tensor, save_arrays
+from srcs.utils.storage import save_arrays
+from srcs.analysis.connectome import pairwise_tensor
 from srcs.analysis.pairwise import selections, week_positions, analyze_views, METRICS, COLUMNS
 from srcs.utils.provenance import sha256
-from srcs.utils.results import save_json, save_table
+from srcs.utils.storage import save_json, save_table
 from srcs.utils.edge_store import load_store, store_path
 
 
+from srcs.core.runtime import numerical_stage
+
+OPTION_KEYS = ("pairwise",)
+
+
+@numerical_stage("pairwise", OPTION_KEYS)
 def run(ctx):
-    views, positions = selections(ctx), week_positions(ctx)
+    views, positions = selections(ctx.weeks, ctx.section("pairwise")), week_positions(ctx.weeks, ctx.section("pairwise").get("week_positions"))
     rows, audits, products = [], [], []
     for atlas in ["_".join(a) for a in ctx.atlases]:
         store = load_store(ctx, atlas)

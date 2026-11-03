@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image
 import tifffile
 
-from srcs.utils.results import save_json
+from srcs.utils.storage import save_json
 
 
 def tiff_shape(path):

@@ -4,12 +4,18 @@ from pathlib import Path
 import pandas as pd
 
 from srcs.analysis.inference import observations, repeated_measures, posthoc
-from srcs.utils.combined_results import export_subject_metrics
+from srcs.workflow.subject_metrics import export_subject_metrics
 from srcs.utils.dataset import statistics_metadata
 from srcs.utils.provenance import sha256
-from srcs.utils.results import save_json, save_table
+from srcs.utils.storage import save_json, save_table
 
 
+from srcs.core.runtime import numerical_stage
+
+OPTION_KEYS = ("statistics", "analysis",)
+
+
+@numerical_stage("statistics", OPTION_KEYS)
 def run(ctx):
     stat = pd.read_pickle(ctx.statistics_path)
     metadata = statistics_metadata(ctx, stat)

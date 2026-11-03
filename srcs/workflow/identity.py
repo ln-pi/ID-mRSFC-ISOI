@@ -27,6 +27,8 @@ def data_identity(ctx, root):
         name = spec["id"]
         identity["scope"].update(branch=settings["branch"], source={
             "kind":"source", "id":name, "digest":digest(input_files(ctx,settings))})
+        identity["scope"]["partitions"] = [
+            {"name":label,"exclude":rules["exclude"]} for label,rules in settings["partitions"].items()]
         identity["stages"] = {name: {"kind":"source","version":spec["version"],
                                       "code":source_code(spec,root),"options":settings},
                               "edges":identity["stages"]["edges"]}

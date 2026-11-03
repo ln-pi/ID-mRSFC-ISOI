@@ -5,7 +5,7 @@ import subprocess
 import sys
 from uuid import uuid4
 
-from srcs.utils.results import save_json
+from srcs.utils.storage import save_json
 from srcs.workflow import STAGES
 
 
@@ -36,6 +36,8 @@ def run_batch(configs, *, project_root, stage=None, start="fc", dry_run=False,
             if source and import_source:
                 raise ValueError("Cannot import FC while an external source is enabled")
             stages = select_steps(available, stage=stage, start=None if stage else (start or ("seedfc" if source else "fc")))
+            from srcs.workflow import validate_plan
+            validate_plan(stages)
             batch["stages"] = stages
             entry = dict(config=str(config), status="running", stages=[])
             batch["series"].append(entry)
@@ -67,7 +69,7 @@ def run_batch(configs, *, project_root, stage=None, start="fc", dry_run=False,
                     return result.returncode, summary
                 save()
             if dry_run:
-                entry["stages"].extend(dict(stage=s, status="planned") for s in stages[1:])
+                entry["stages"].extend(dict(stage=s, status="deferred") for s in stages[1:])
             entry["status"] = "planned" if dry_run else "complete"
             save()
     except BaseException as exc:

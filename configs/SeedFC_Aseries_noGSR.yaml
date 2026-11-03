@@ -55,12 +55,12 @@ ID:
   session_seed: 42
   shuffle: true
   n_iter: 1000
-Edge:
-  threshold: 99
-  gap: 0.25
-  cross_only: false
-  save_mat: true
 visualization:
+  edge_graph:
+    threshold: 99
+    gap: 0.25
+    cross_only: false
+    save_mat: true
   pairwise:
     vmin: 0
     vmax: 1
@@ -219,7 +219,7 @@ plugins:
     options:
       branch: noGSR
       series: Aseries
-      source: data/SeedFC/organized
+      source: ../data/SeedFC_001_008/organized
       partitions:
         Whole:
           exclude: []

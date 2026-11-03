@@ -2,10 +2,10 @@
 import json
 from pathlib import Path
 
-from srcs.analysis.connectome import load_arrays
+from srcs.utils.storage import load_arrays
 from srcs.analysis.magnitude import SCHEMA
 from srcs.utils.provenance import sha256
-from srcs.utils.results import save_json, save_table
+from srcs.utils.storage import save_json, save_table
 
 
 def verified_index(path):

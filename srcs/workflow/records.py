@@ -1,20 +1,18 @@
 """Validate numerical inputs and track products at the worker boundary."""
 import json
 from pathlib import Path
+from importlib import import_module
 
-from srcs.core.artifacts import sha256, write_json
+from srcs.core.artifacts import sha256, write_json, publish
+from srcs.core.contracts import StageResult, ProductRef, StageContext
+from dataclasses import asdict
 from srcs.core.identity import code_closure, digest
 from srcs.core.runtime import cache_key, reusable
 from srcs.utils.config import PROJECT_ROOT
 from srcs.utils.dataset import resolve_recording
-from srcs.workflow import MODULES
+from srcs.workflow import MODULES, PRODUCTS
 
 
-OPTIONS = {"preprocess": ("preprocess",), "fc": ("correlation",), "edges": (),
-           "geometry": ("geometry",), "inference": ("inference",), "pairwise": ("pairwise",),
-           "descriptive": ("descriptive",), "stability": ("stability", "descriptive", "pairwise"),
-           "longitudinal": ("longitudinal", "descriptive", "pairwise"),
-           "combined": ("analysis", "ID"), "statistics": ("statistics",), "seedfc": ("plugins",)}
 PARENTS = {"edges": ("fc",), "geometry": ("edges",), "inference": ("geometry",),
            "pairwise": ("edges",), "descriptive": ("edges",),
            "stability": ("edges", "descriptive"), "longitudinal": ("edges", "descriptive"),
@@ -32,6 +30,10 @@ def record(ctx, stage):
 
 def recording_inputs(ctx, raw=False):
     paths = set(Path(ctx.mask_root).glob("*.png"))
+    if raw:
+        paths = {path for path in paths if path.name.casefold()=="chamber_mask.png"}
+        paths.update(PROJECT_ROOT/"srcs/atlas"/name for name in
+                     ("Bregma.pkl","Raw_Area_ID_bin4.npy","Brain_Area_Masks_bin4.pkl"))
     for week in ctx.weeks:
         for mouse in ctx.mice:
             for run in ctx.runs:
@@ -58,6 +60,8 @@ def signature(ctx, stage):
         from plugins.seedfc import input_files
         inputs = input_files(ctx,ctx.config["plugins"]["seedfc"]["options"])
     parents = PARENTS.get(stage, ())
+    if stage == "fc" and record_path(ctx,"preprocess").exists():
+        parents = ("preprocess",)
     if stage == "edges" and "seedfc" in ctx.data_identity["stages"]:
         parents = ("seedfc",)
     for parent in parents:
@@ -67,10 +71,11 @@ def signature(ctx, stage):
         if not previous or not reusable(previous, signature(ctx, parent)["cache"]["key"]):
             raise ValueError(f"Inputs or products changed: rerun {parent}")
         inputs[parent] = digest(previous["cache"]["outputs"])
-    options = {key: ctx.section(key) for key in OPTIONS[stage]}
+    option_keys = import_module(MODULES[stage]).OPTION_KEYS
+    options = {key: ctx.section(key) for key in option_keys}
     code = digest(code_closure(PROJECT_ROOT, MODULES[stage]))
     return dict(schema="stage_record_v1", stage=stage, code=code, options=options,
-                option_keys=OPTIONS[stage], options_digest=digest(options), inputs=inputs,
+                option_keys=option_keys, options_digest=digest(options), inputs=inputs,
                 cache={"key": cache_key(code, options, inputs)})
 
 
@@ -97,15 +102,38 @@ def run_cached(ctx, stage, action):
     path = record_path(ctx, stage)
     if reusable(record(ctx, stage), state["cache"]["key"]):
         ctx.logger.info("Reusing verified products: %s", stage)
-        return
+        return StageResult(tuple(ProductRef(**item) for item in record(ctx,stage).get("products",[])))
     state["status"] = "running"
     write_json(path, state)
     try:
-        action(ctx)
+        refs = {}
+        for parent in state["inputs"]:
+            for item in record(ctx,parent).get("products",[]) if parent in MODULES else ():
+                refs[item["name"]]=ProductRef(**dict(item,path=Path(item["path"])))
+        ctx.stage = StageContext(refs,state["options"],state["option_keys"],
+                                 Path(ctx.output_path),ctx.analysis_tag)
+        try:
+            action(ctx)
+        finally:
+            ctx.stage = None
         state["cache"]["outputs"] = products(ctx, stage)
+        refs = []
+        outputs = list(state["cache"]["outputs"])
+        for name, patterns in PRODUCTS["fc" if stage=="seedfc" else stage].items():
+            selected = [p for p in outputs if any(Path(p).match(glob) for glob in patterns)]
+            if "@aggregate" in patterns:
+                selected = [ctx.statistics_path]
+            if not selected:
+                raise ValueError(f"No files for declared product {name}")
+            index = path.parent/"products"/(name+".json")
+            ref = publish(index,name,name,selected)
+            state["cache"]["outputs"][str(index)] = ref.sha256
+            refs.append(ref)
+        state["products"] = [dict(asdict(ref),path=str(ref.path)) for ref in refs]
         state["status"] = "complete"
     except BaseException as exc:
         state.update(status="failed", reason=str(exc))
         raise
     finally:
         write_json(path, state)
+    return StageResult(tuple(refs))

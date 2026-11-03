@@ -3,15 +3,21 @@ from pathlib import Path
 
 import numpy as np
 
-from srcs.analysis.connectome import save_arrays
+from srcs.utils.storage import save_arrays
 from srcs.analysis.stability import SCHEMA, residual_persistence, run_repeatability
 from srcs.analysis.topology import edge_layout
 from srcs.analysis.variance import balanced_reml, variance_intervals
-from srcs.utils.analysis_products import bootstrap_options, descriptive_products, publish
+from srcs.workflow.products import bootstrap_options, descriptive_products, publish
 from srcs.utils.edge_store import load_store, store_path
 from srcs.utils.provenance import code_identity, sha256
 
 
+from srcs.core.runtime import numerical_stage
+
+OPTION_KEYS = ("stability", "descriptive", "pairwise",)
+
+
+@numerical_stage("stability", OPTION_KEYS)
 def run(ctx):
     folder = Path(ctx.output_dir("results", "stability"))
     count, seed = bootstrap_options(ctx, "stability")

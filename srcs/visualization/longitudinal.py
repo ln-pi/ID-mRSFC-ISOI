@@ -6,13 +6,13 @@ import numpy as np
 import pandas as pd
 
 from srcs.analysis.longitudinal import SCHEMA
-from srcs.utils.analysis_products import verified_index
+from srcs.workflow.products import verified_index
 from srcs.utils.provenance import sha256
-from srcs.utils.results import save_json
+from srcs.utils.storage import save_json
 
 
 def run(ctx):
-    source = Path(ctx.output_path)/"results/longitudinal/index.json"
+    source = Path(ctx.output_dir("results","longitudinal",create=False))/"index.json"
     index = verified_index(source)
     if index["schema"] != SCHEMA:
         raise ValueError("Unsupported longitudinal schema")

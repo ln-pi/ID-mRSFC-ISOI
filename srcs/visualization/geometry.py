@@ -1,5 +1,4 @@
 """Render saved geometry without refitting FC or changing cohort membership."""
-import ast
 import base64
 import html
 import json
@@ -9,7 +8,6 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import pandas as pd
-from sklearn.decomposition import PCA
 
 from srcs.core.artifacts import sha256, write_json
 
@@ -36,8 +34,6 @@ def render(ctx):
         if len(points)<2:
             continue
         points = points.copy()
-        projection = PCA(n_components=2)
-        points[["pc1","pc2"]] = projection.fit_transform(np.stack(points.point.map(ast.literal_eval)))
         weeks = list(points.week.unique())
         fig,axs = plt.subplots(1,len(weeks),figsize=(3.5*len(weeks),3.6),sharex=True,sharey=True,squeeze=False)
         for ax,(week,part) in zip(axs[0],points.groupby("week",sort=False)):
@@ -50,18 +46,20 @@ def render(ctx):
             ax.set_xlabel("PC1")
         axs[0,0].set_ylabel("PC2")
         axs[0,0].legend()
-        fig.suptitle("Pooled PCA | variance "+", ".join(f"{v:.1%}" for v in projection.explained_variance_ratio_))
+        ratios=points.iloc[0][["variance_pc1","variance_pc2"]]
+        fig.suptitle("Pooled PCA | variance "+", ".join(f"{v:.1%}" for v in ratios))
         save(fig,prefix+"_projection")
         distances = select("distances")
-        dm = distances[(distances.metric=="rms") & (distances.query==run_b)]
+        dm = distances[(distances.metric=="rms") & (distances.query==run_b) & (distances.reference==run_a)]
         vmax = dm.distance.max()
         for week,part in dm.groupby("week",sort=False):
-            matrix = part.pivot(index="mouse",columns="other",values="distance")
+            matrix = part.pivot(index="mouse",columns="other",values="distance").reindex(index=ctx.mice,columns=ctx.mice)
             fig,ax = plt.subplots(figsize=(5,4))
-            im=ax.imshow(matrix,cmap="inferno",vmin=0,vmax=vmax)
+            im=ax.imshow(matrix,cmap=plt.get_cmap("inferno").with_extremes(bad="lightgray"),vmin=0,vmax=vmax)
             ax.set_xticks(range(len(matrix.columns)),matrix.columns,rotation=90)
             ax.set_yticks(range(len(matrix.index)),matrix.index)
-            ax.scatter(np.nanargmin(matrix.values,axis=1),np.arange(len(matrix)),marker="x",color="cyan")
+            valid=matrix.notna().any(axis=1).to_numpy()
+            ax.scatter(np.nanargmin(matrix.values[valid],axis=1),np.flatnonzero(valid),marker="x",color="cyan")
             ax.set(xlabel=run_a+" reference",ylabel=run_b+" query",title=week+" | RMS")
             fig.colorbar(im,ax=ax)
             save(fig,prefix+"_"+week+"_matrix")
@@ -89,6 +87,31 @@ def render(ctx):
             ax.set_title(title)
         fig.tight_layout()
         save(fig,prefix+"_trajectories")
+        other=select("subjects")
+        other=other[(other.metric=="rms") & (other.rule=="leave_one_out")]
+        if not other.empty:
+            fig,ax=plt.subplots(figsize=(7,4))
+            for removed,part in other.groupby("removed"):
+                series=part.groupby("week").q.mean().reindex(weeks)
+                ax.plot(weeks,series,label=str(removed),alpha=.65)
+            ax.set(title="Leave-one-mouse sensitivity",ylabel="Discriminability",ylim=(0,1))
+            save(fig,prefix+"_sensitivity")
+        signed=select("crossval")
+        signed=signed[signed["mode"]=="identity"] if "mode" in signed else signed.iloc[:0]
+        if len(signed) and signed.estimate.notna().any():
+            from matplotlib.colors import TwoSlopeNorm
+            limit=max(np.finfo(float).eps,float(signed.estimate.abs().max()))
+            fig,axs=plt.subplots(1,len(weeks),figsize=(3.5*len(weeks),3.6),squeeze=False)
+            for ax,week in zip(axs[0],weeks):
+                sub=signed[signed.week==week]
+                matrix=pd.DataFrame(np.nan,index=ctx.mice,columns=ctx.mice)
+                for row in sub.itertuples():
+                    matrix.loc[row.first,row.second]=matrix.loc[row.second,row.first]=row.estimate
+                im=ax.imshow(matrix,cmap=plt.get_cmap("coolwarm").with_extremes(bad="lightgray"),
+                             norm=TwoSlopeNorm(0,-limit,limit))
+                ax.set_title(week)
+            fig.colorbar(im,ax=list(axs[0]),label="Crossvalidated squared difference")
+            save(fig,prefix+"_crossval")
     return figures
 
 
