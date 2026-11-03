@@ -6,6 +6,7 @@ paths:
   mask: data\mask\
   log: logs\Aseries.log
 variables:
+  series: Aseries
   dataset: ''
   Week_ids:
   - 00w
@@ -61,7 +62,6 @@ ID:
   shuffle: true
   n_iter: 1000
 Edge:
-  seed: 42
   threshold: 99
   gap: 0.25
   cross_only: false

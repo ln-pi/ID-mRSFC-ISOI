@@ -31,6 +31,7 @@ def main(argv=None):
     parser.add_argument('--report-section', choices=('all', 'pairwise', 'descriptive', 'stability', 'longitudinal', 'combined', 'statistics'), default='all',
                         help='Saved-result section to redraw during report (default: all available)')
     parser.add_argument('--report-root', default='reports/automatic', help='Batch plan/status directory')
+    parser.add_argument('--tag', help='Append a suffix to the data output directory')
     args = parser.parse_args(argv)
     start = args.stage or args.start or 'fc'
     if args.import_fc and (not args.config or start != 'edges'):
@@ -44,7 +45,7 @@ def main(argv=None):
     from srcs.utils.series_workflow import run_batch
     code, _ = run_batch(configs, project_root=ROOT, stage=args.stage, start=args.start or 'fc',
         dry_run=args.dry_run, import_source=args.import_fc, report_section=args.report_section,
-        report_root=args.report_root)
+        report_root=args.report_root, tag=args.tag)
     return code
 
 

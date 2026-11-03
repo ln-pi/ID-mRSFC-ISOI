@@ -10,11 +10,12 @@ from srcs.workflow import STAGES
 
 
 def run_batch(configs, *, project_root, stage=None, start="fc", dry_run=False,
-              import_source=None, report_section="all", report_root="reports/automatic", execute=None):
+              import_source=None, report_section="all", report_root="reports/automatic", execute=None, tag=None):
     root = Path(project_root).resolve()
     if (stage is not None and stage not in STAGES) or start not in STAGES:
         raise ValueError("Unknown workflow stage")
-    stages = [stage] if stage else list(STAGES[STAGES.index(start):])
+    from srcs.core.runtime import select_steps
+    stages = select_steps(STAGES, stage=stage, start=None if stage else start)
     if import_source and (len(configs) != 1 or stages[0] != "edges"):
         raise ValueError("FC import requires one configuration and an edges start")
     configs = [(root / config).resolve() for config in configs]
@@ -41,6 +42,8 @@ def run_batch(configs, *, project_root, stage=None, start="fc", dry_run=False,
                            "--stage", current, "--report-section", report_section]
                 if dry_run:
                     command.append("--dry-run")
+                if tag:
+                    command.extend(["--tag", tag])
                 if import_source and current == "edges":
                     command.extend(["--import-fc", str((root / import_source).resolve())])
                 step = dict(stage=current, status="running", started=datetime.now(timezone.utc).isoformat())

@@ -1,6 +1,5 @@
 import os
-import hashlib
-import json
+from functools import cached_property
 from dataclasses import dataclass
 from typing import Any
 from pathlib import Path
@@ -94,7 +93,7 @@ class RunContext:
 
     @property
     def output_path(self):
-        return os.path.join(self.output_root, self.analysis_tag, self.dataset)
+        return os.path.join(self.output_root, self.analysis_tag)
 
     @property
     def session_seed(self):
@@ -117,16 +116,15 @@ class RunContext:
         ids = (self.weeks if weeks is None else weeks) if self.split_axis == "week" else (self.runs if runs is None else runs)
         return [[ids[i] for i in group] for group in self.group_indices(weeks, runs)]
 
+    @cached_property
+    def data_identity(self):
+        from srcs.workflow.identity import data_identity
+        return data_identity(self, PROJECT_ROOT)
+
     @property
     def analysis_tag(self):
-        edge_seed = self.section("Edge").get("seed", 42)
-        if isinstance(edge_seed, bool) or not isinstance(edge_seed, int) or edge_seed < 0:
-            raise ValueError("Edge.seed must be a nonnegative integer for reproducible analysis.")
-        identity = self.config  # Deterministic isolation by the complete parsed configuration.
-        digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:10]
-        repeat_id = self.section("ID").get("repeat_id")
-        repeat = f"_repeat{repeat_id}" if repeat_id is not None else ""
-        return f"seed_{self.group_mode}_{self.session_seed}{repeat}_edge{edge_seed}_{digest}"
+        from srcs.workflow.identity import data_tag
+        return data_tag(self.data_identity, getattr(self.args, "tag", None))
 
     @property
     def correlation_path(self):

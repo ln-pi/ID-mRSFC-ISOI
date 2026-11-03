@@ -20,8 +20,7 @@
 | ID.completeness_mode | strict 全配置完整队列，或 cover 最大完整鼠×连续周窗口；只影响 combined |
 | ID.group_mode / session_seed | sequential/random、不重叠拆分及种子 |
 | ID.shuffle / n_iter | combined 身份重标记；包含并列的上尾 (b+1)/(B+1) |
-| Edge.seed | 保留的完整配置身份字段；固定 ID 配对使用 session_seed，不另做随机 edge 拆分 |
-| Edge.threshold / gap / cross_only / save_mat | edge 图参数 |
+| Edge.threshold / gap / cross_only / save_mat | edge 环形图显示参数；B5 起迁 `visualization.edge_graph`（L3），不再是 `edges` 的数值选项 |
 | pairwise.phases | 阶段名称→周标签，仅用于完整数组之后的选择 |
 | pairwise.phase_comparisons | 两个不重叠阶段的有向比较 |
 | pairwise.week_positions | 可选周数值位置，必须覆盖全部 Week_ids 且严格递增；默认解析 00w 等数字标签 |
@@ -31,7 +30,7 @@
 
 完整 parsed config 仍参与输出哈希，绘图参数也会改变结果目录。没有把源预处理身份、分析身份、绘图身份静默拆为新缓存体系。根入口接受 `--configs` 顺序批处理，默认 Aseries 和 Nseries；`--import-fc` 要求单一 `-c` 并从 edges 开始。`--report-section` 是运行选择参数，不修改配置身份，可单独重绘 pairwise/combined/statistics；`--report-root` 指定批次状态记录目录。
 
-已移除 Session_ids/Trial_ids、数值 group_mode 12/13/14、非空 repeat_id、supplement/DD/ND，以及重复固定配对的 Edge.repeat。旧数字脚本入口改为根 run.py/run.ps1；不对旧 YAML 进行隐式转换。
+已移除 Session_ids/Trial_ids、数值 group_mode 12/13/14、非空 repeat_id、supplement/DD/ND、重复固定配对的 Edge.repeat，以及无任何数值消费者的 Edge.seed。旧数字脚本入口改为根 run.py/run.ps1；不对旧 YAML 进行隐式转换。
 
 ## FC / edge store
 

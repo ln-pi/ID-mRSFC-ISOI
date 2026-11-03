@@ -2,6 +2,7 @@
 import argparse
 from datetime import datetime, timezone
 import importlib
+import json
 from pathlib import Path
 
 from srcs.utils.config import load_context
@@ -29,7 +30,7 @@ def validate(ctx, stage, importing=False):
         from srcs.utils.edge_store import source_identity
         for atlas in ctx.atlases:
             source_identity(ctx, '_'.join(atlas))
-    elif stage in ('pairwise', 'descriptive', 'stability', 'longitudinal', 'combined'):
+    elif stage in ('geometry', 'pairwise', 'descriptive', 'stability', 'longitudinal', 'combined'):
         from srcs.utils.edge_store import load_store
         for atlas in ctx.atlases:
             store = load_store(ctx, '_'.join(atlas))
@@ -53,6 +54,9 @@ def validate(ctx, stage, importing=False):
                 raise ValueError('Fewer than two complete mice remain')
             ctx.group_indices(audit['retained_weeks'], ctx.runs)
             print(f"Combined cohort: {len(mice)} mice x {len(audit['retained_weeks'])} weeks")
+    elif stage == 'inference':
+        if not (Path(ctx.output_path) / "results/geometry/v1/index.json").is_file():
+            raise FileNotFoundError("Run geometry first")
     elif stage == 'statistics':
         import pandas as pd
         from srcs.utils.dataset import statistics_metadata
@@ -74,20 +78,29 @@ def main(argv=None):
     selection.add_argument('--start', choices=STAGES, default='fc')
     parser.add_argument('--dry-run', action='store_true')
     parser.add_argument('--import-fc')
+    parser.add_argument('--tag')
     parser.add_argument('--report-section', choices=('all', 'pairwise', 'descriptive', 'stability', 'longitudinal', 'combined', 'statistics'), default='all')
     args = parser.parse_args(argv)
     ctx = load_context(args.config, create_dirs=False)
+    ctx.args.tag = args.tag
+    identity_path = Path(ctx.output_path) / "metadata/data_identity.json"
+    if identity_path.exists() and json.loads(identity_path.read_text(encoding="utf-8")) != ctx.data_identity:
+        raise ValueError("Data identity collision; use a distinct --tag")
     ctx.args.report_section = args.report_section
     stages = [args.stage] if args.stage else list(STAGES[STAGES.index(args.start):])
     if args.import_fc and stages[0] != 'edges':
         parser.error('--import-fc requires --stage/--start edges')
     print(f'Output: {ctx.output_path}\nStages: {", ".join(stages)}', flush=True)
     if args.import_fc:
+        if not args.dry_run and not identity_path.exists():
+            save_json(identity_path, ctx.data_identity)
         details = import_fc(ctx, args.import_fc, dry_run=args.dry_run)
         print(f'FC import verified: {len(details["tables"])} tables; {details["audit_source"]}', flush=True)
     validate(ctx, stages[0], importing=bool(args.import_fc))
     if args.dry_run:
         return 0
+    if not identity_path.exists():
+        save_json(identity_path, ctx.data_identity)
     if not (Path(ctx.output_path) / "metadata/analysis_config.json").exists():
         ctx.save_analysis_metadata()
     for stage in stages:
@@ -99,7 +112,12 @@ def main(argv=None):
         save_json(marker, state)
         ctx.logger.info('Starting stage: %s', stage)
         try:
-            importlib.import_module(MODULES[stage]).run(ctx)
+            action = importlib.import_module(MODULES[stage]).run
+            if stage == "report":
+                action(ctx)
+            else:
+                from srcs.workflow.records import run_cached
+                run_cached(ctx, stage, action)
         except BaseException as exc:
             state.update(status='interrupted' if isinstance(exc, KeyboardInterrupt) else 'failed', reason=str(exc))
             save_json(marker, state)

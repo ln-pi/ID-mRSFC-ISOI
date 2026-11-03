@@ -18,8 +18,8 @@ logger = setup_logger()
 
 def signature(path):
     path = Path(path)
-    stat = path.stat()
-    return [str(path.resolve()), stat.st_size, stat.st_mtime_ns]
+    from srcs.core.artifacts import sha256
+    return [str(path.resolve()), sha256(path)]
 
 
 def valid_fc(frame, names):

@@ -35,7 +35,7 @@ def source_identity(ctx, atlas):
     return dict(config_tag=ctx.analysis_tag, sources=sources,
                 audit=dict(path=str(report.resolve()), sha256=sha256(report)),
                 preprocessing_provenance=json.loads(provenance.read_text(encoding="utf-8")) if provenance.exists()
-                else {"origin": "current_fc_pipeline", "config": ctx.config}), records
+                else {"origin": "current_fc_pipeline", "data_identity": ctx.data_identity}), records
 
 
 def load_store(ctx, atlas):
@@ -48,8 +48,7 @@ def load_store(ctx, atlas):
     current, _ = source_identity(ctx, atlas)
     if store.metadata["input_identity"] != current:
         raise ValueError("Edge store inputs changed; rebuild --stage edges")
-    identity = code_identity()
-    if store.metadata["code"]["source_sha256"] != identity["source_sha256"]:
+    if store.metadata.get("numerical_code") != ctx.data_identity["stages"]["edges"]["code"]:
         raise ValueError("Edge store code changed; rebuild --stage edges")
     if (store.mice, store.weeks, store.runs) != (ctx.mice, ctx.weeks, ctx.runs):
         raise ValueError("Edge store labels differ from configuration")
@@ -62,7 +61,8 @@ def run(ctx):
         identity, audit = source_identity(ctx, atlas)
         tables = {row["week"]: pd.read_pickle(row["path"]) if row["sha256"] else None for row in identity["sources"]}
         store = EdgeStore.from_tables(tables, ctx.mice, ctx.weeks, ctx.runs, atlas, audit)
-        store.metadata.update(input_identity=identity, code=code)
+        store.metadata.update(input_identity=identity, code=code,
+                              numerical_code=ctx.data_identity["stages"]["edges"]["code"])
         store.save(store_path(ctx, atlas))
         save_json(store_path(ctx, atlas).with_suffix(".json"),
                   dict(metadata=store.metadata, sha256=sha256(store_path(ctx, atlas))))

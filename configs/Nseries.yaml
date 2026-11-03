@@ -6,6 +6,7 @@ paths:
   mask: data\mask\
   log: logs\Nseries.log
 variables:
+  series: Nseries
   dataset: ''
   Week_ids:
   - 00w
@@ -66,7 +67,6 @@ ID:
   shuffle: true
   n_iter: 1000
 Edge:
-  seed: 42
   threshold: 99
   gap: 0.25
   cross_only: false
