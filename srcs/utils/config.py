@@ -89,10 +89,13 @@ class RunContext:
 
     @property
     def processed_path(self):
-        return os.path.join(self.processed_root, self.dataset)
+        base = os.path.join(self.processed_root, self.dataset)
+        return base if self.section("preprocess").get("gsr",True) else os.path.join(base,"noGSR")
 
     @property
     def output_path(self):
+        if getattr(self.args,"saved_output",None):
+            return str(self.args.saved_output)
         return os.path.join(self.output_root, self.analysis_tag)
 
     @property
@@ -181,7 +184,11 @@ class RunContext:
         return self.viz("defaults").get("render_dpi", self.figure_dpi())
 
     def output_dir(self, *parts, create=True):
-        path = os.path.join(self.output_path, *output_parts(parts))
+        mapped = output_parts(parts)
+        base = self.output_path
+        if mapped and mapped[0].split("/")[0] == "report":
+            base = getattr(self.args,"redraw_root",base)
+        path = os.path.join(base, *mapped)
         if create:
             os.makedirs(path, exist_ok=True)
         return path

@@ -8,7 +8,7 @@ import pandas as pd
 from srcs.analysis.geometry.crossval import crossvalidated
 from srcs.analysis.geometry.distances import distances, dispersion
 from srcs.analysis.geometry.discriminability import score
-from srcs.core.artifacts import publish
+from srcs.core.artifacts import publish, write_json
 from srcs.core.identity import digest
 from srcs.utils.edge_store import load_store
 from srcs.utils.results import save_table
@@ -21,8 +21,10 @@ def run(ctx):
     if not isinstance(k, int) or k < 1:
         raise ValueError("matched_candidates must be a positive integer")
     matrices, subjects, summaries, differences, points = [], [], [], [], []
+    bases = {}
     for atlas in map("_".join, ctx.atlases):
         store = load_store(ctx, atlas)
+        bases[atlas] = dict(roi_labels=list(store.roi_labels), edge_index=store.edge_index.tolist())
         for a,b in combinations(range(len(ctx.runs)), 2):
             valid = store.valid_record[:,:,a] & store.valid_record[:,:,b]
             for cohort in ("available_week", "fixed_window"):
@@ -58,10 +60,16 @@ def run(ctx):
                                     result = score(matrix[i],i,pool)
                                     result["nearest"] = "|".join(ids[result.pop("nearest_indices")])
                                     subjects.append(dict(base, rule=rule, removed=removed, **result))
-    files = []
+    basis_path = folder/"basis.json"
+    write_json(basis_path,bases)
+    files = [basis_path]
     for name,rows in (("distances",matrices),("subjects",subjects),("dispersion",summaries),
                       ("crossval",differences),("points",points)):
         path = folder / (name + ".csv")
-        save_table(path, pd.DataFrame(rows), index=False)
+        columns = {"subjects": ["atlas","week","cohort","run_a","run_b","metric","rule","mouse","removed","q","margin"],
+                   "points":["atlas","cohort","run_a","run_b","week","run","mouse","point"],
+                   "distances":["atlas","cohort","run_a","run_b","week","metric","query","reference","mouse","other","distance"]}
+        frame = pd.DataFrame(rows) if rows else pd.DataFrame(columns=columns.get(name,["atlas","status"]))
+        save_table(path, frame, index=False)
         files.append(path)
     publish(folder/"index.json","geometry_metrics_v1","geometry_metrics_v1",files)

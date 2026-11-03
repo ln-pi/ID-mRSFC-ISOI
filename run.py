@@ -24,15 +24,29 @@ def main(argv=None):
     configs.add_argument('-c', '--config')
     configs.add_argument('--configs', nargs='+')
     stages = parser.add_mutually_exclusive_group()
-    stages.add_argument('--stage', choices=STAGES)
-    stages.add_argument('--start', choices=STAGES)
+    stages.add_argument('--stage', choices=(*STAGES,"seedfc"))
+    stages.add_argument('--start', choices=(*STAGES,"seedfc"))
     parser.add_argument('--dry-run', action='store_true', help='Validate selected inputs and print output locations without running stages')
     parser.add_argument('--import-fc', metavar='SOURCE_OUTPUT', help='Explicit source output/correlation directory; requires -c and edges stage')
-    parser.add_argument('--report-section', choices=('all', 'pairwise', 'descriptive', 'stability', 'longitudinal', 'combined', 'statistics'), default='all',
+    parser.add_argument('--from', dest='saved_output', metavar='DIRECTORY')
+    parser.add_argument('--compare', nargs=2, metavar=('FIRST','SECOND'))
+    parser.add_argument('--report-section', choices=('all', 'geometry', 'pairwise', 'descriptive', 'stability', 'longitudinal', 'combined', 'statistics'), default='all',
                         help='Saved-result section to redraw during report (default: all available)')
     parser.add_argument('--report-root', default='reports/automatic', help='Batch plan/status directory')
     parser.add_argument('--tag', help='Append a suffix to the data output directory')
     args = parser.parse_args(argv)
+    if args.compare:
+        if any((args.stage,args.start,args.saved_output,args.config,args.configs,args.tag,args.import_fc,args.dry_run)):
+            parser.error('--compare is a standalone operation')
+        from srcs.workflow.compare import compare
+        roots = [ROOT / name if (ROOT / name).is_dir() else ROOT / "data/output" / name for name in args.compare]
+        print(compare(*roots))
+        return 0
+    if args.saved_output:
+        if args.stage != 'report' or args.config or args.configs or args.import_fc or args.tag:
+            parser.error('--from accepts only saved-result report execution')
+        from srcs.workflow.report import redraw_saved
+        return redraw_saved((ROOT / args.saved_output).resolve(), args.report_section, args.dry_run)
     start = args.stage or args.start or 'fc'
     if args.import_fc and (not args.config or start != 'edges'):
         parser.error('--import-fc requires -c and --start/--stage edges')
@@ -43,7 +57,7 @@ def main(argv=None):
         if not config.is_file():
             parser.error(f'Configuration does not exist: {config}')
     from srcs.utils.series_workflow import run_batch
-    code, _ = run_batch(configs, project_root=ROOT, stage=args.stage, start=args.start or 'fc',
+    code, _ = run_batch(configs, project_root=ROOT, stage=args.stage, start=args.start,
         dry_run=args.dry_run, import_source=args.import_fc, report_section=args.report_section,
         report_root=args.report_root, tag=args.tag)
     return code

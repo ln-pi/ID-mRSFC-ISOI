@@ -139,7 +139,7 @@ def Affine_Atlas(processed_path, mouse, trial):
     cv2.imwrite(os.path.join(processed_path, f"{mouse}_{trial}_Average_After.png"), transformed_stacks.mean(0).astype("u2"))
 
 
-def drr_narrow(processed_path, mouse, trial, week, mask_root=os.path.join("data", "mask")):
+def drr_narrow(processed_path, mouse, trial, week, mask_root=os.path.join("data", "mask"), gsr=True):
     affine_data = np.load(os.path.join(processed_path, f"{mouse}_{trial}_Affine.npy"))
     chambermask = load_chamber_mask(mask_root, expected_shape=affine_data.shape[1:])
     mask_data = affine_data * chambermask
@@ -150,13 +150,14 @@ def drr_narrow(processed_path, mouse, trial, week, mask_root=os.path.join("data"
 
     # GSR
     GSR_data = np.transpose(detrended_data * chambermask, (1, 2, 0))
-    global_signal = (GSR_data[chambermask > 0]).mean(0)
-    reshaped_data = GSR_data.reshape(-1, GSR_data.shape[-1])
-    X = global_signal[:, np.newaxis]
-    Y = reshaped_data.T
-    beta = np.linalg.lstsq(X, Y, rcond=None)[0]
-    residuals = Y - X @ beta
-    regress_data = residuals.T.reshape(GSR_data.shape)
+    regress_data = GSR_data
+    if gsr:
+        global_signal = (GSR_data[chambermask > 0]).mean(0)
+        reshaped_data = GSR_data.reshape(-1, GSR_data.shape[-1])
+        X = global_signal[:, np.newaxis]
+        Y = reshaped_data.T
+        beta = np.linalg.lstsq(X, Y, rcond=None)[0]
+        regress_data = (Y - X @ beta).T.reshape(GSR_data.shape)
     NormalizedSeries = normalize_data(regress_data, mask=chambermask)
     ResidualGSR = np.transpose(NormalizedSeries, (2, 0, 1))
 

@@ -76,7 +76,7 @@ def run(ctx):
                 if list(frame.index) != result["roi_labels"] or list(frame.columns) != result["roi_labels"]:
                     raise ValueError(f"Edge ROI order mismatch: {path}")
                 if enabled:
-                    options = ctx.section("Edge")
+                    options = ctx.viz("edge_graph",ctx.section("Edge"))
                     target = Path(ctx.output_dir("IdentificationFigures", str(condition), "edges"))
                     matrix = frame.to_numpy()
                     circularGraph(matrix, [label.split("-", 1)[-1] for label in result["roi_labels"]],
