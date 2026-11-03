@@ -14,7 +14,7 @@ OPTIONS = {"preprocess": ("preprocess",), "fc": ("correlation",), "edges": (),
            "geometry": ("geometry",), "inference": ("inference",), "pairwise": ("pairwise",),
            "descriptive": ("descriptive",), "stability": ("stability", "descriptive", "pairwise"),
            "longitudinal": ("longitudinal", "descriptive", "pairwise"),
-           "combined": ("analysis", "ID"), "statistics": ("statistics",)}
+           "combined": ("analysis", "ID"), "statistics": ("statistics",), "seedfc": ("plugins",)}
 PARENTS = {"edges": ("fc",), "geometry": ("edges",), "inference": ("geometry",),
            "pairwise": ("edges",), "descriptive": ("edges",),
            "stability": ("edges", "descriptive"), "longitudinal": ("edges", "descriptive"),
@@ -54,7 +54,13 @@ def signature(ctx, stage):
     elif stage == "edges":
         from srcs.utils.edge_store import source_identity
         inputs = {"_".join(a): digest(source_identity(ctx, "_".join(a))[0]) for a in ctx.atlases}
-    for parent in PARENTS.get(stage, ()):
+    if stage == "seedfc":
+        from plugins.seedfc import input_files
+        inputs = input_files(ctx,ctx.config["plugins"]["seedfc"]["options"])
+    parents = PARENTS.get(stage, ())
+    if stage == "edges" and "seedfc" in ctx.data_identity["stages"]:
+        parents = ("seedfc",)
+    for parent in parents:
         previous = record(ctx, parent)
         if not previous and parent == "fc" and (Path(ctx.output_path) / "metadata/fc_import_provenance.json").exists():
             continue
@@ -70,12 +76,12 @@ def signature(ctx, stage):
 
 def products(ctx, stage):
     root = Path(ctx.output_path)
-    if stage in ("preprocess", "fc"):
+    if stage in ("preprocess", "fc", "seedfc"):
         prefix = "01_preprocess" if stage == "preprocess" else "02_correlation"
         audit = max((root / "metadata/batch_reports").glob(prefix + "_*.json"),
                     key=lambda p: (p.stat().st_mtime_ns, p.name))
         files = [audit]
-        if stage == "fc":
+        if stage in ("fc","seedfc"):
             files.extend(Path(ctx.correlation_path).glob("*_excluded.pkl"))
         else:
             files.extend(Path(p) for p in recording_inputs(ctx) if p.endswith("_FiltDRR.npy"))

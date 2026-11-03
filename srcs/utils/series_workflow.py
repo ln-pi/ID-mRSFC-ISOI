@@ -12,11 +12,10 @@ from srcs.workflow import STAGES
 def run_batch(configs, *, project_root, stage=None, start="fc", dry_run=False,
               import_source=None, report_section="all", report_root="reports/automatic", execute=None, tag=None):
     root = Path(project_root).resolve()
-    if (stage is not None and stage not in STAGES) or start not in STAGES:
-        raise ValueError("Unknown workflow stage")
     from srcs.core.runtime import select_steps
-    stages = select_steps(STAGES, stage=stage, start=None if stage else start)
-    if import_source and (len(configs) != 1 or stages[0] != "edges"):
+    from srcs.utils.config import load_config
+    from srcs.workflow.sources import active_source
+    if import_source and (len(configs) != 1 or (stage or start) != "edges"):
         raise ValueError("FC import requires one configuration and an edges start")
     configs = [(root / config).resolve() for config in configs]
     for path in configs:
@@ -26,12 +25,18 @@ def run_batch(configs, *, project_root, stage=None, start="fc", dry_run=False,
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%SZ")
     summary = root / report_root / f"{stamp}_{uuid4().hex[:8]}" / "batch_summary.json"
     batch = dict(schema="workflow_batch_v1", status="running", project_root=str(root),
-                 python=sys.executable, dry_run=dry_run, stages=stages, series=[])
+                 python=sys.executable, dry_run=dry_run, series=[])
     def save():
         save_json(summary, batch)
     save()
     try:
         for index, config in enumerate(configs, 1):
+            source = active_source(load_config(config),root)
+            available = ("seedfc", *STAGES[STAGES.index("edges"):]) if source else STAGES
+            if source and import_source:
+                raise ValueError("Cannot import FC while an external source is enabled")
+            stages = select_steps(available, stage=stage, start=None if stage else (start or ("seedfc" if source else "fc")))
+            batch["stages"] = stages
             entry = dict(config=str(config), status="running", stages=[])
             batch["series"].append(entry)
             print(f"[{index}/{len(configs)}] {config.name}", flush=True)

@@ -6,7 +6,7 @@ from srcs.workflow import MODULES
 
 def data_identity(ctx, root):
     options = {"preprocess": ctx.section("preprocess"), "fc": ctx.section("correlation"), "edges": {}}
-    return {
+    identity = {
         "schema": "data_identity_v1", "schema_version": 1,
         "scope": {
             "dataset": ctx.dataset, "series": ctx.variables.get("series", ""),
@@ -19,6 +19,18 @@ def data_identity(ctx, root):
         "stages": {name: {"kind": "builtin", "code": digest(code_closure(root, MODULES[name])),
                           "options": value} for name, value in options.items()},
     }
+    from srcs.workflow.sources import active_source, source_code
+    external = active_source(ctx.config, root)
+    if external:
+        from plugins.seedfc import input_files
+        spec, settings = external
+        name = spec["id"]
+        identity["scope"].update(branch=settings["branch"], source={
+            "kind":"source", "id":name, "digest":digest(input_files(ctx,settings))})
+        identity["stages"] = {name: {"kind":"source","version":spec["version"],
+                                      "code":source_code(spec,root),"options":settings},
+                              "edges":identity["stages"]["edges"]}
+    return identity
 
 
 def data_tag(identity, suffix=None):

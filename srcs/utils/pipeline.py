@@ -74,12 +74,12 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', required=True)
     selection = parser.add_mutually_exclusive_group()
-    selection.add_argument('--stage', choices=STAGES)
+    selection.add_argument('--stage', choices=(*STAGES,"seedfc"))
     selection.add_argument('--start', choices=STAGES, default='fc')
     parser.add_argument('--dry-run', action='store_true')
     parser.add_argument('--import-fc')
     parser.add_argument('--tag')
-    parser.add_argument('--report-section', choices=('all', 'pairwise', 'descriptive', 'stability', 'longitudinal', 'combined', 'statistics'), default='all')
+    parser.add_argument('--report-section', choices=('all', 'geometry', 'pairwise', 'descriptive', 'stability', 'longitudinal', 'combined', 'statistics'), default='all')
     args = parser.parse_args(argv)
     ctx = load_context(args.config, create_dirs=False)
     ctx.args.tag = args.tag
@@ -96,7 +96,11 @@ def main(argv=None):
             save_json(identity_path, ctx.data_identity)
         details = import_fc(ctx, args.import_fc, dry_run=args.dry_run)
         print(f'FC import verified: {len(details["tables"])} tables; {details["audit_source"]}', flush=True)
-    validate(ctx, stages[0], importing=bool(args.import_fc))
+    if stages[0] == "seedfc":
+        from plugins.seedfc import run
+        run(ctx, dry_run=True)
+    else:
+        validate(ctx, stages[0], importing=bool(args.import_fc))
     if args.dry_run:
         return 0
     if not identity_path.exists():
