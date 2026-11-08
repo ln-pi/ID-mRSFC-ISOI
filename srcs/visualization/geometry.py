@@ -13,7 +13,7 @@ from srcs.core.artifacts import sha256, write_json
 
 
 def render(ctx):
-    source = Path(ctx.output_path)/"results/geometry/v1"
+    source = Path(ctx.output_path)/"results/geometry/"
     index = json.loads((source/"index.json").read_text(encoding="utf-8"))
     for path,expected in index["files"].items():
         if sha256(path) != expected:

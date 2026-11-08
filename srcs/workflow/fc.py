@@ -45,7 +45,7 @@ def run(ctx):
                             pbar.update(1)
                     df.attrs["complete"] = all(isinstance(df.at[m, t], pd.DataFrame)
                                                for m in ctx.mice for t in ctx.runs)
-                    df.attrs.update(schema="week_mouse_run_v1", week=week, weeks=ctx.weeks, runs=ctx.runs, mice=ctx.mice)
+                    df.attrs.update(schema="week_mouse_run", week=week, weeks=ctx.weeks, runs=ctx.runs, mice=ctx.mice)
                     df.attrs["batch_report"] = str(report.path)
                     save_pickle(target, df)
                     ctx.logger.info("FC table saved: %s; complete=%s", target, df.attrs["complete"])

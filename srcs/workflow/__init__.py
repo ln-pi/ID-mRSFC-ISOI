@@ -4,19 +4,19 @@ MODULES = {name: "srcs.workflow." + name for name in STAGES}
 MODULES["seedfc"] = "plugins.seedfc"
 
 PRODUCTS = {
-    "preprocess": {"preprocessed_recordings_v1": ("*",)},
-    "fc": {"fc_tables_v1": ("*.pkl",), "batch_report_v1": ("*.json",)},
-    "edges": {"edge_store_v1": ("*",)},
-    "geometry": {"geometry_metrics_v1": ("basis.json","distances.csv","points.csv","dispersion.csv","displacement.csv"),
-                 "discriminability_v1": ("subjects.csv",), "crossval_difference_v1": ("crossval.csv",)},
-    "inference": {"inference_summary_v1": ("*",)},
-    "pairwise": {"pairwise_tensors_v1": ("*.npz",), "pairwise_selection_v1": ("*.json","*.csv")},
-    "descriptive": {"descriptive_v2": ("*",)},
-    "stability": {"stability_v1": ("*",)},
-    "longitudinal": {"longitudinal_v1": ("*",)},
-    "combined": {"combined_identification_v1": ("*",), "identifiability_aggregate_v1": ("@aggregate",)},
-    "statistics": {"statistics_tables_v1": ("*",)},
-    "report": {"unified_report_v1": ("*",)},
+    "preprocess": {"preprocessed_recordings": ("*",)},
+    "fc": {"fc_tables": ("*.pkl",), "batch_report": ("*.json",)},
+    "edges": {"edge_store": ("*",)},
+    "geometry": {"geometry_metrics": ("basis.json","distances.csv","points.csv","dispersion.csv","displacement.csv"),
+                 "discriminability": ("subjects.csv",), "crossval_difference": ("crossval.csv",)},
+    "inference": {"inference_summary": ("*",)},
+    "pairwise": {"pairwise_tensors": ("*.npz",), "pairwise_selection": ("*.json","*.csv")},
+    "descriptive": {"descriptive": ("*",)},
+    "stability": {"stability": ("*",)},
+    "longitudinal": {"longitudinal": ("*",)},
+    "combined": {"combined_identification": ("*",), "identifiability_aggregate": ("@aggregate",)},
+    "statistics": {"statistics_tables": ("*",)},
+    "report": {"unified_report": ("*",)},
 }
 
 

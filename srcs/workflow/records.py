@@ -1,7 +1,9 @@
 """Validate numerical inputs and track products at the worker boundary."""
 import json
+from time import monotonic
 from pathlib import Path
 from importlib import import_module
+from tqdm import tqdm
 
 from srcs.core.artifacts import sha256, write_json, publish
 from srcs.core.contracts import StageResult, ProductRef, StageContext
@@ -46,7 +48,19 @@ def recording_inputs(ctx, raw=False):
                     paths.update(source.glob("info.txt"))
                 else:
                     paths.add(source)
-    return {str(path): sha256(path) for path in sorted(paths)}
+    paths = sorted(paths)
+    total_bytes = sum(path.stat().st_size for path in paths)
+    ctx.logger.info("Verifying input contents: %d files, %.2f GiB; FC computation starts after verification",
+                    len(paths), total_bytes / 1024**3)
+    started = monotonic()
+    inputs = {}
+    with tqdm(total=total_bytes, desc="Verifying inputs", unit="B", unit_scale=True) as progress:
+        for path in paths:
+            progress.set_postfix_str(path.name, refresh=True)
+            inputs[str(path)] = sha256(path)
+            progress.update(path.stat().st_size)
+    ctx.logger.info("Input verification completed in %.1f seconds", monotonic() - started)
+    return inputs
 
 
 def signature(ctx, stage):
@@ -74,7 +88,7 @@ def signature(ctx, stage):
     option_keys = import_module(MODULES[stage]).OPTION_KEYS
     options = {key: ctx.section(key) for key in option_keys}
     code = digest(code_closure(PROJECT_ROOT, MODULES[stage]))
-    return dict(schema="stage_record_v1", stage=stage, code=code, options=options,
+    return dict(schema="stage_record", stage=stage, code=code, options=options,
                 option_keys=option_keys, options_digest=digest(options), inputs=inputs,
                 cache={"key": cache_key(code, options, inputs)})
 

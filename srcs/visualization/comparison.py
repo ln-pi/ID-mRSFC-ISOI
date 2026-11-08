@@ -9,7 +9,7 @@ from srcs.core.artifacts import sha256, write_json
 
 
 def render(folder, first, second, paired):
-    root=Path(folder).parents[2]/"report"
+    root=Path(folder).parents[1]/"report"
     root.mkdir(parents=True,exist_ok=True)
     source=Path(folder)/"projection.csv"
     display=pd.read_csv(source)
@@ -32,6 +32,8 @@ def render(folder, first, second, paired):
         axes[0,0].set_ylabel("PC2")
         for title,color in ((first,"#356caa"),(second,"#bd502f")):
             axes[0,0].scatter([],[],label=title,color=color)
+        for i, run in enumerate(group.run.unique()):
+            axes[0,0].scatter([], [], marker=("o", "^", "s")[i%3], color="gray", label=run)
         axes[0,0].legend(fontsize=6)
         var=group.iloc[0]
         fig.suptitle(f"Common PCA ({var.variance_pc1:.1%}, {var.variance_pc2:.1%} explained)")
@@ -70,7 +72,7 @@ def render(folder, first, second, paired):
                 ax.set_yticks(range(len(matrix)),matrix.index,fontsize=7)
                 valid=matrix.notna().any(axis=1).to_numpy()
                 ax.scatter(np.nanargmin(matrix.values[valid],axis=1),np.flatnonzero(valid),marker="x",color="cyan")
-                ax.set(title=side+" | n="+str(valid.sum()),xlabel=reference,ylabel=query)
+                ax.set(title=(first if side == "first" else second)+" | n="+str(valid.sum()),xlabel=reference,ylabel=query)
             fig.colorbar(im,ax=list(axes),label="RMS")
             path=root/f"{atlas}_{cohort}_{week}_{query}_{reference}_rms.png"
             fig.savefig(path,bbox_inches="tight")

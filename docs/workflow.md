@@ -9,7 +9,7 @@ $python = "F:\CondaEnvs\ID-mRSFC-ISOI\python.exe"
 & $python run.py -c configs/SeedFC_Aseries_noGSR.yaml --stage seedfc --dry-run
 ```
 
-上面的 SeedFC 检查命令已在本机验证。正式配置采用 22 个 seed，目前完整记录数为 0，真实几何运行暂缓。原生 FC 入口还需先在配置中设置实际可用的处理后信号和 mask 路径。
+上面的 SeedFC 检查命令已在本机验证。源文件含 22 个 seed；当前 FourNetworks 分区通过 exclude 保留指定的 14 个 ROI，noGSR 两组存在有效记录，可运行后续分析。原生 FC 入口还需先在配置中设置实际可用的处理后信号和 mask 路径。
 
 P3 新增的几何计算、来源插件和跨系列比较可从本目录运行：
 
@@ -45,8 +45,8 @@ python run.py --dry-run
 | inference | geometry 数值 | 逐周主终点、整鼠敏感性与趋势 |
 | pairwise | edge store | 每分区、每 Run 的 N×N×W×W；阶段选择与逐鼠指标 |
 | descriptive | edge store | 同日模式相关/RMS/偏移、03w 变化、同组 LOO 偏离、ΔFC/逐边方差 |
-| stability | descriptive v2 与 edge store | 逐边方差分量与稳定性 |
-| longitudinal | descriptive v2 与 edge store | 整鼠轨迹和网络随机斜率 |
+| stability | descriptive 与 edge store | 逐边方差分量与稳定性 |
+| longitudinal | descriptive 与 edge store | 整鼠轨迹和网络随机斜率 |
 | combined | edge store；strict/cover 选择规则 | P1 汇总 ID、shuffle、Phi/DP |
 | statistics | 保存的 combined 数值 | 逐鼠自身匹配优势/百分位、重复测量统计与表 |
 | report | 保存的 pairwise、combined、statistics 数值 | 阶段图、ID/edge 图、统计图及输入校验索引 |
@@ -73,7 +73,7 @@ python run.py --stage descriptive
 python run.py --stage report --report-section descriptive
 ```
 
-默认对每个 Run 及所有 Run 的 Fisher-z FC 均值分别计算欧式/RMS/1−r 距离、LOO ΔFC、群体离散度、逐边样本方差及 ROI/网络方向和贡献。`results/descriptive/v2/` 保存两套队列的全部数值、选择规则和描述性离群示例；`report/descriptive/` 保存 PNG/PDF 和索引。参数和公式见 [配置与数据契约](config.md)。
+默认对每个 Run 及所有 Run 的 Fisher-z FC 均值分别计算欧式/RMS/1−r 距离、LOO ΔFC、群体离散度、逐边样本方差及 ROI/网络方向和贡献。`results/descriptive/` 保存两套队列的全部数值、选择规则和描述性离群示例；`report/descriptive/` 保存 PNG/PDF 和索引。参数和公式见 [配置与数据契约](config.md)。
 
 ## 显式导入已有 FC
 

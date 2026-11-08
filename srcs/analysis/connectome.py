@@ -8,8 +8,8 @@ import numpy as np
 
 
 EDGE_CLIP = 0.999999  # P1 edge-level transform, distinct from similarity boundaries
-SCHEMA = "fc_edges_v1"
-SIM_SCHEMA = "pairwise_similarity_v1"
+SCHEMA = "fc_edges"
+SIM_SCHEMA = "pairwise_similarity"
 
 
 def pattern_pearson(first, second):

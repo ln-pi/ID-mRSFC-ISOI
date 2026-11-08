@@ -187,7 +187,7 @@ data/output/<data_tag>/
 ├── results/
 │   ├── edges/               FC edge arrays, labels, and recording masks
 │   ├── pairwise/            Per-Run similarity arrays and week-pair/window summaries
-│   ├── descriptive/v2/      Distances, dispersion, Delta FC, regions, and examples
+│   ├── descriptive/      Distances, dispersion, Delta FC, regions, and examples
 │   ├── stability/           Repeatability, Delta FC persistence, variance components, ICC
 │   ├── longitudinal/        Trajectories, uncertainty, trends, network slopes and diagnostics
 │   ├── combined/            Identification, permutations, and Phi/DP

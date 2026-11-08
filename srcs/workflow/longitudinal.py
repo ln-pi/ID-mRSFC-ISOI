@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 from srcs.utils.storage import save_arrays
+from srcs.analysis.phases import definitions as phase_definitions, weekly_metric_means
 from srcs.analysis.longitudinal import SCHEMA, dispersion_trajectory, linear_slope, random_slopes, rank_persistence
 from srcs.analysis.magnitude import select_views
 from srcs.analysis.pairwise import week_positions
@@ -106,11 +107,19 @@ def run(ctx):
             tables["mouse_slopes"].extend(dict(**base, **row) for row in effects)
             tables["model_diagnostics"].extend(dict(**base, **row) for row in diagnostics)
             ctx.logger.info("Random slope %s/%s: %s", atlas, target, summary["status"])
+    selected_phases = phase_definitions(ctx.weeks, ctx.section("pairwise"))
+    phases = {name: [ctx.weeks[i] for i in indices] for name, indices in selected_phases.items()}
+    tables["phase_subjects"] = weekly_metric_means(pd.DataFrame(tables["subjects"]), phases,
+        ["atlas", "cohort", "view", "mouse"], ["deviation_rms", "mean_signed_deviation"])
+    tables["phase_dispersion"] = weekly_metric_means(pd.DataFrame(tables["dispersion"]), phases,
+        ["atlas", "cohort", "view"], ["dispersion", "group_mean_fc", "n_mice"])
     model_path = folder/"models.json"
     save_json(model_path, tables["random_slopes"])
     products.append(dict(kind="model_diagnostics", path=str(model_path), sha256=sha256(model_path)))
     publish(folder, SCHEMA, products, tables, dict(schema=SCHEMA, code=code, sources=sources,
         time_positions=positions, time_units="configured_week_positions_not_assumed_actual_acquisition_dates",
+        phase_summary=dict(phases=phases, averaging="arithmetic mean of weekly metrics; no phase FC averaging",
+                           uncertainty="phase plots descriptive; weekly confidence bounds are not averaged"),
         trajectory_bootstrap=dict(unit="whole_mouse_trajectory", n_bootstrap=count, seed=seed, interval="percentile_95"),
         trend="OLS_slope_of_dispersion_over_time; increasing/decreasing_only_if_bootstrap_CI_excludes_zero",
         trend_scope="descriptive_convergence_divergence_not_disease_causality; compare_fixed_and_available_cohorts",

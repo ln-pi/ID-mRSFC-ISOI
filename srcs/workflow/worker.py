@@ -55,7 +55,7 @@ def validate(ctx, stage, importing=False):
             ctx.group_indices(audit['retained_weeks'], ctx.runs)
             print(f"Combined cohort: {len(mice)} mice x {len(audit['retained_weeks'])} weeks")
     elif stage == 'inference':
-        if not (Path(ctx.output_path) / "results/geometry/v1/index.json").is_file():
+        if not (Path(ctx.output_path) / "results/geometry/index.json").is_file():
             raise FileNotFoundError("Run geometry first")
     elif stage == 'statistics':
         import pandas as pd

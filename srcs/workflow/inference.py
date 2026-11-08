@@ -16,8 +16,8 @@ OPTION_KEYS = ("inference", "pairwise",)
 
 @numerical_stage("inference", OPTION_KEYS)
 def run(ctx):
-    folder = Path(ctx.output_dir("results","inference","v1"))
-    source = Path(ctx.output_path)/"results/geometry/v1/subjects.csv"
+    folder = Path(ctx.output_dir("results","inference"))
+    source = Path(ctx.output_path)/"results/geometry/subjects.csv"
     subjects = pd.read_csv(source)
     endpoint = ctx.section("inference").get("primary_endpoint","q_mean")
     if endpoint not in ("q_mean","margin_mean"):
@@ -61,4 +61,4 @@ def run(ctx):
                            low=low,high=high,n=len(values),interval="not_confidence_interval"))
     trend_path=folder/"trends.csv"
     save_table(trend_path,pd.DataFrame(trends),index=False)
-    publish(folder/"index.json","inference_summary_v1","inference_summary_v1",[path,trend_path])
+    publish(folder/"index.json","inference_summary","inference_summary",[path,trend_path])

@@ -36,7 +36,7 @@
 
 `correlation/<week>_correlation_matrices_<atlas>_excluded.pkl`：行是配置鼠，列是 Run，每个有效单元格为带一致 ROI 行列标签的 Pearson FC 方阵。原始表保持导入字节，以便来源复核和 FC 往返。
 
-`results/edges/<atlas>.npz`，schema=`fc_edges_v1`：
+`results/edges/<atlas>.npz`，schema=`fc_edges`：
 
 | 键 | 形状/口径 |
 | --- | --- |
@@ -53,7 +53,7 @@
 
 ## 每 Run 的 S
 
-`results/pairwise/v1/<atlas>/<run_id>.npz`，schema=`pairwise_similarity_v1`：
+`results/pairwise/<atlas>/<run_id>.npz`，schema=`pairwise_similarity`：
 
 | 键 | 形状/口径 |
 | --- | --- |
@@ -72,7 +72,7 @@ from srcs.utils.edge_store import EdgeStore
 from srcs.utils.storage import load_arrays
 from srcs.analysis.connectome import SIM_SCHEMA
 store = EdgeStore.load("/absolute/output/results/edges/AUDv.npz")
-meta, values = load_arrays("/absolute/output/results/pairwise/v1/AUDv/Run01.npz", SIM_SCHEMA)
+meta, values = load_arrays("/absolute/output/results/pairwise/AUDv/Run01.npz", SIM_SCHEMA)
 panel = values["S_r"][:, :, 4, 7]       # 04w → 07w (按保存标签核对位置)
 trajectory = values["S_r"][0, 0, :, :]  # 第一只鼠的跨周自身矩阵
 ```
@@ -89,7 +89,7 @@ pairwise 的 subjects_by_pair.csv 保留每周对、鼠、Run、窗口、cohort�
 
 本版没有预设更宽松的“阶段最低有效周数”、单 Run 替代或匹配间隔推断。CSV 保存实际标签对应的周数间隔，供后续相邻周/匹配间隔筛选。它不是实际采集日差；本次输入没有新增采集日期或失访原因资料。
 
-## 幅度与拓扑（descriptive v2）
+## 幅度与拓扑（descriptive）
 
 不改配置即可执行 `python run.py --stage descriptive`；数值结果通过 `--stage report --report-section descriptive` 独立绘图。代码更新后，先执行 `--stage edges` 重建代码身份已变化的缓存。
 
@@ -124,7 +124,7 @@ descriptive:
 
 N<2 时离散度、样本方差、LOO 偏离均标记未定义，不用单鼠制造零群体差异；单鼠自身欧式/RMS 距离仍为 0。缺失记录不填零，常量模式仍可计算幅度距离。距离矩阵主对角线不参与唯一成对距离汇总。
 
-输出目录 `results/descriptive/v2/`，schema=`descriptive_magnitude_topology_v2`：
+输出目录 `results/descriptive/`，schema=`descriptive_magnitude_topology`：
 
 - `<atlas>/<cohort>.npz`：`distance_euclidean/rms/correlation[W,V,N,N]`；`residual_group_loo/delta_from_reference[N,W,V,E]`；`edge_variance/group_mean[W,V,E]`；`valid_record[N,W,V]`、`n_valid_mice[W,V]`、`edge_index`。V 的 ID、Run 汇总规则和网络映射保存在 metadata。
 - `distances.csv`：每周/视图/队列的唯一非自身鼠对及三种距离，常量模式原因。
@@ -142,11 +142,11 @@ ROI 贡献将每条边的平方偏离能量（或边方差）各分一半给两�
 
 `report/descriptive/` 生成每视图的两队列离散度/样本数、逐鼠偏离轨迹、首个有效周的三种距离矩阵与全部小鼠 ΔFC 图、全周方差图、ROI/网络方差和示例方向图。所有周的全部鼠与两队列数值保存在上述数组/表中；图表使用保存产品，核查哈希后独立重绘。图中矩阵对角线不代表自连接，保持遮罩。
 
-旧 `results/descriptive/topology_<atlas>.npz` 等 v1 文件不作为 v2 输入，不会自动删除。v2 的 `residual_group_loo` 才是群体 ΔFC；旧 `delta_from_reference` 的自身参照含义不变。`descriptive` 阶段不估计置信区间、ICC、随机效应或组间推断；稳定性与纵向模型在下面的独立阶段计算。
+`residual_group_loo` 表示同组同周的群体 ΔFC，`delta_from_reference` 表示相对自身参照周的变化。`descriptive` 阶段不估计置信区间、ICC、随机效应或组间推断；稳定性与纵向模型在独立阶段计算。
 
 ## 稳定性与纵向演化
 
-`stability` 和 `longitudinal` 读取校验后的 descriptive v2 与 edge store；共同采用 `descriptive.weeks` 选择的窗口。时间位置沿用 `pairwise.week_positions`，默认从 `00w` 等数字周标签提取，非数字标签必须显式配置。位置是数值时间单位，不自动等于实际采集日期。
+`stability` 和 `longitudinal` 读取校验后的 descriptive 与 edge store；共同采用 `descriptive.weeks` 选择的窗口。时间位置沿用 `pairwise.week_positions`，默认从 `00w` 等数字周标签提取，非数字标签必须显式配置。位置是数值时间单位，不自动等于实际采集日期。
 
 ```yaml
 stability:
@@ -227,17 +227,17 @@ python run.py --stage report --report-section longitudinal
 
 | 位置 | 内容 |
 | --- | --- |
-| results/stability/v1/repeatability.csv | 原始/共同模板 ΔFC 的 Run 重复性与均值—差值 |
-| results/stability/v1/residual_pairs.csv | 逐鼠、视图、队列的唯一跨周 ΔFC 相似 |
-| results/stability/v1/edge_icc.csv / regional_icc.csv | 逐边方差/ICC/区间、区域汇总 |
-| results/stability/v1/cohorts.csv | 平衡模型的保留/排除原因 |
-| results/stability/v1/&lt;atlas&gt;/variance_components.npz | 方差、ICC、稳定/鼠×周 BLUP、残差、设计标签 |
-| results/stability/v1/&lt;atlas&gt;/residual_&lt;cohort&gt;.npz | N×V×W×W 残差相似矩阵及有效掩码 |
-| results/longitudinal/v1/dispersion.csv / trends.csv | 逐周区间、整体斜率区间和方向标签 |
-| results/longitudinal/v1/subjects.csv / rank_pairs.csv | 逐鼠轨迹、描述性斜率、共同鼠排名保持 |
-| results/longitudinal/v1/random_slopes.csv / mouse_slopes.csv | 网络模型、条件逐鼠斜率 |
-| results/longitudinal/v1/models.json / model_diagnostics.csv | 结构化模型诊断与逐记录拟合值/残差 |
-| results/longitudinal/v1/&lt;atlas&gt;/trajectories_&lt;cohort&gt;.npz | W×V 离散度、2×W×V 区间、N×W×V 偏离度、群体 FC/相邻周变化 |
+| results/stability/repeatability.csv | 原始/共同模板 ΔFC 的 Run 重复性与均值—差值 |
+| results/stability/residual_pairs.csv | 逐鼠、视图、队列的唯一跨周 ΔFC 相似 |
+| results/stability/edge_icc.csv / regional_icc.csv | 逐边方差/ICC/区间、区域汇总 |
+| results/stability/cohorts.csv | 平衡模型的保留/排除原因 |
+| results/stability/&lt;atlas&gt;/variance_components.npz | 方差、ICC、稳定/鼠×周 BLUP、残差、设计标签 |
+| results/stability/&lt;atlas&gt;/residual_&lt;cohort&gt;.npz | N×V×W×W 残差相似矩阵及有效掩码 |
+| results/longitudinal/dispersion.csv / trends.csv | 逐周区间、整体斜率区间和方向标签 |
+| results/longitudinal/subjects.csv / rank_pairs.csv | 逐鼠轨迹、描述性斜率、共同鼠排名保持 |
+| results/longitudinal/random_slopes.csv / mouse_slopes.csv | 网络模型、条件逐鼠斜率 |
+| results/longitudinal/models.json / model_diagnostics.csv | 结构化模型诊断与逐记录拟合值/残差 |
+| results/longitudinal/&lt;atlas&gt;/trajectories_&lt;cohort&gt;.npz | W×V 离散度、2×W×V 区间、N×W×V 偏离度、群体 FC/相邻周变化 |
 | report/stability / report/longitudinal | PNG/PDF、索引；无需源 FC/edge cache 的独立重绘 |
 
-两阶段各有 methods/index.json，保存 schema、数值输入 SHA256、完整规则、代码和 Statsmodels 等依赖版本。它们与幅度/拓扑 v2 分开保存，不改写旧指标的含义。
+两阶段各有 methods/index.json，保存 schema、数值输入 SHA256、完整规则、代码和 Statsmodels 等依赖版本。它们与幅度/拓扑分开保存，不改写旧指标的含义。

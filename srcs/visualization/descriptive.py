@@ -30,7 +30,7 @@ def _heat(ax, matrix, labels, *, title, cmap, vmin, vmax):
 
 
 def run(ctx):
-    source = Path(ctx.output_path) / "results/descriptive/v2/index.json"
+    source = Path(ctx.output_path) / "results/descriptive/index.json"
     index = json.loads(source.read_text(encoding="utf-8"))
     if index["schema"] != SCHEMA:
         raise ValueError("Unsupported descriptive report schema")
@@ -134,9 +134,17 @@ def run(ctx):
                     ax.set_axis_off()
                     continue
                 matrix = data.pivot(index="region", columns="week", values="mean_value").reindex(columns=weeks)
+                order = list(dict.fromkeys(data.region))
+                matrix = matrix.reindex(index=order)
                 im = ax.imshow(matrix, aspect="auto", vmin=0, vmax=_upper(matrix.to_numpy()), cmap="viridis")
                 ax.set_xticks(range(len(weeks)), weeks, rotation=90, fontsize=8)
-                ax.set_yticks(range(len(matrix)), matrix.index, fontsize=6)
+                labels = [f"{meta.get('roi_network_mapping', {}).get(roi, '')} | {roi}" for roi in matrix.index] if level == "roi" else matrix.index
+                ax.set_yticks(range(len(matrix)), labels, fontsize=6)
+                if level == "roi":
+                    assigned = [meta.get("roi_network_mapping", {}).get(roi) for roi in matrix.index]
+                    for position in range(1, len(assigned)):
+                        if assigned[position] != assigned[position-1]:
+                            ax.axhline(position-.5, color="white", linewidth=1)
                 ax.set_title(f"{level}: mean edge variance")
                 fig.colorbar(im, ax=ax, shrink=.7)
             direction = selected[(selected.quantity == "residual_group_loo") &

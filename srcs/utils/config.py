@@ -203,12 +203,6 @@ class RunContext:
         base = self.output_path
         if mapped and mapped[0] == "results/combined":
             mapped = ("results","combined",*mapped[1:])
-        if len(mapped)>=2 and mapped[0]=="results" and mapped[1] in (
-            "combined","pairwise","stability","longitudinal","statistics"
-        ):
-            versioned = Path(base)/mapped[0]/mapped[1]/"v1"
-            if not getattr(self.args,"saved_output",None) or versioned.is_dir():
-                mapped = (*mapped[:2],"v1",*mapped[2:])
         if mapped and mapped[0].split("/")[0] == "report":
             base = getattr(self.args,"redraw_root",base)
         path = os.path.join(base, *mapped)

@@ -28,6 +28,28 @@ def run(ctx):
             fig.savefig(folder/f"{name}.{suffix}", dpi=ctx.figure_dpi(), bbox_inches="tight")
             written.append(f"{name}.{suffix}")
         plt.close(fig)
+    phase_path = source.parent / "phase_dispersion.csv"
+    if phase_path.is_file():
+        phase_data = pd.read_csv(phase_path)
+        phase_subjects = pd.read_csv(source.parent / "phase_subjects.csv")
+        if "phase" in phase_data and len(phase_data):
+            for (atlas, view), part in phase_data.groupby(["atlas", "view"], sort=False):
+                phases = list(dict.fromkeys(part.phase))
+                fig, axes = plt.subplots(1, 3, figsize=(15, 4), constrained_layout=True)
+                for cohort, data in part.groupby("cohort", sort=False):
+                    data = data.set_index("phase").reindex(phases)
+                    axes[0].plot(phases, data.dispersion, "-o", label=cohort)
+                    axes[1].plot(phases, data.n_mice, "-o", label=cohort)
+                sub = phase_subjects[(phase_subjects.atlas == atlas) & (phase_subjects.view == view)]
+                for (cohort, mouse), data in sub.groupby(["cohort", "mouse"], sort=False):
+                    data = data.set_index("phase").reindex(phases)
+                    axes[2].plot(phases, data.deviation_rms, "-o", alpha=.5, label=f"{mouse} | {cohort}")
+                for ax, title in zip(axes, ("Mean weekly dispersion", "Mean weekly valid mice", "Mean weekly LOO RMS")):
+                    ax.set_title(title)
+                    ax.tick_params(axis="x", rotation=30)
+                axes[0].legend(fontsize=7)
+                fig.suptitle(f"{atlas} | {view} | descriptive phase means of weekly metrics")
+                save(fig, f"phase_trajectories_{atlas}_{view}")
     for (atlas, view), data in dispersion.groupby(["atlas", "view"], sort=False):
         fig, axes = plt.subplots(1, 4, figsize=(20, 4.8), constrained_layout=True)
         weeks = list(dict.fromkeys(data.week))

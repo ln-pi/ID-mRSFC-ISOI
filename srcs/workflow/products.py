@@ -18,10 +18,10 @@ def verified_index(path):
 
 
 def descriptive_products(ctx, atlas):
-    path = Path(ctx.output_path)/"results/descriptive/v2/index.json"
+    path = Path(ctx.output_path)/"results/descriptive/index.json"
     index = verified_index(path)
     if index["schema"] != SCHEMA:
-        raise ValueError("Run descriptive v2 first")
+        raise ValueError("Run descriptive first")
     products = {}
     for item in index["products"]:
         if item["atlas"] != atlas:

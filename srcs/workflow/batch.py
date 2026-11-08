@@ -24,7 +24,7 @@ def run_batch(configs, *, project_root, stage=None, start="fc", dry_run=False,
     execute = execute or subprocess.run
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%SZ")
     summary = root / report_root / f"{stamp}_{uuid4().hex[:8]}" / "batch_summary.json"
-    batch = dict(schema="workflow_batch_v1", status="running", project_root=str(root),
+    batch = dict(schema="workflow_batch", status="running", project_root=str(root),
                  python=sys.executable, dry_run=dry_run, series=[])
     def save():
         save_json(summary, batch)
@@ -72,6 +72,22 @@ def run_batch(configs, *, project_root, stage=None, start="fc", dry_run=False,
                 entry["stages"].extend(dict(stage=s, status="deferred") for s in stages[1:])
             entry["status"] = "planned" if dry_run else "complete"
             save()
+        if not dry_run and len(configs) == 2 and report_section == "all" and all(
+                any(step["stage"] == "report" for step in entry["stages"]) for entry in batch["series"]):
+            from srcs.utils.config import load_context
+            contexts = [load_context(path, create_dirs=False) for path in configs]
+            for context in contexts:
+                context.args.tag = tag
+            identities = [context.data_identity["scope"] for context in contexts]
+            outputs = [Path(context.output_path) for context in contexts]
+            required = ("geometry/index.json", "inference/index.json", "descriptive/index.json")
+            if (identities[0]["series"] != identities[1]["series"]
+                    and identities[0]["branch"] == identities[1]["branch"]
+                    and all((output/"results"/name).is_file() for output in outputs for name in required)):
+                from srcs.workflow.compare import compare
+                comparison = compare(*outputs)
+                batch["comparison"] = dict(status="complete", path=str(comparison))
+                save()
     except BaseException as exc:
         status = "interrupted" if isinstance(exc, KeyboardInterrupt) else "failed"
         batch.update(status=status, reason=str(exc))

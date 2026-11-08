@@ -1,9 +1,9 @@
 paths:
   raw: data\raw\
-  processed: E:\data\processed\
+  processed: data\processed
   output: data\output\
   mask: data\mask\
-  log: logs\Aseries.log
+  log: logs/SeedFC_Aseries_noGSR.log
 variables:
   series: Aseries
   dataset: SeedFC
@@ -23,23 +23,21 @@ variables:
   - 12w
   - 13w
   Mouse_ids:
-  - A01
-  - A02
-  - A03
-  - A04
-  - A05
-  - A06
-  - A07
-  - A08
-  - A09
-  - A10
+  - A25
+  - A26
+  - A27
+  - A28
+  - A29
+  - A30
+  - A31
+  - A32
+  - A33
+  - A35
   Run_ids:
   - Run01
   - Run02
   Atlas:
-  - - Whole
-  - - Association
-  - - Sensation
+  - - FourNetworks
 preprocess:
   keepna: false
   resume: true
@@ -62,7 +60,7 @@ visualization:
     cross_only: false
     save_mat: true
   pairwise:
-    vmin: 0
+    vmin: -1
     vmax: 1
     cmap: inferno
     under_color: '#d73027'
@@ -211,19 +209,43 @@ pairwise:
   - - middle
     - late
   window_interpretation: N_aligned_observation_windows
+  summary_phases:
+  - baseline
+  - early
+  - middle
+  - late
 descriptive:
   reference_week: 03w
+  network_mapping:
+    MOP_L: Motor
+    MOP_R: Motor
+    MOS_L: Motor
+    MOS_R: Motor
+    SSP_L: Somatosensory
+    SSP_R: Somatosensory
+    VIS_L: Visual
+    VIS_R: Visual
+    RSP_L: DefaultMode
+    RSP_R: DefaultMode
+    ACA_L: DefaultMode
+    ACA_R: DefaultMode
+    PL_L: DefaultMode
+    PL_R: DefaultMode
 plugins:
   seedfc:
     enabled: true
     options:
       branch: noGSR
       series: Aseries
-      source: ../data/SeedFC_001_008/organized
+      source: ../data/SeedFC_001_008/organized_original_ids
       partitions:
-        Whole:
-          exclude: []
-        Association:
-          exclude: []
-        Sensation:
-          exclude: []
+        FourNetworks:
+          exclude:
+          - AUD_L
+          - AUD_R
+          - TEA_L
+          - TEA_R
+          - FRP_L
+          - FRP_R
+          - SSS_L
+          - SSS_R

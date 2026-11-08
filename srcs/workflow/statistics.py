@@ -34,7 +34,7 @@ def run(ctx):
     excluded = set(ctx.section("analysis").get("statistics_exclude", []))
     for condition in stat.columns:
         save_table(tables / f"posthoc_{condition}.csv", posthoc(stat, condition, excluded), index=False)
-    save_json(folder / "methods.json", dict(schema="combined_statistics_v1", analysis=metadata,
+    save_json(folder / "methods.json", dict(schema="combined_statistics", analysis=metadata,
         input=dict(path=str(ctx.statistics_path), sha256=sha256(ctx.statistics_path)),
         within=within, inference="existing_within_mouse_combined_only", posthoc_correction="FDR_BH",
         undefined_posthoc="record_NaN_without_poisoning_finite_p_value_correction"))

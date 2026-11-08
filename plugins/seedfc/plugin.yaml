@@ -1,5 +1,4 @@
 id: seedfc
-version: 0.1.0
 kind: source
 requires: []
 produces: []  # This source writes the native weekly tables in place of fc.

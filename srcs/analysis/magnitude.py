@@ -3,7 +3,7 @@ import numpy as np
 
 from srcs.analysis.connectome import pattern_pearson
 
-SCHEMA = "descriptive_magnitude_topology_v2"
+SCHEMA = "descriptive_magnitude_topology"
 
 
 def magnitude(values, valid):

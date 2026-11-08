@@ -7,7 +7,7 @@ from srcs.workflow import MODULES
 def data_identity(ctx, root):
     options = {"preprocess": ctx.section("preprocess"), "fc": ctx.section("correlation"), "edges": {}}
     identity = {
-        "schema": "data_identity_v1", "schema_version": 1,
+        "schema": "data_identity",
         "scope": {
             "dataset": ctx.dataset, "series": ctx.variables.get("series", ""),
             "branch": "GSR" if ctx.section("preprocess").get("gsr", True) else "noGSR",
@@ -29,7 +29,7 @@ def data_identity(ctx, root):
             "kind":"source", "id":name, "digest":digest(input_files(ctx,settings))})
         identity["scope"]["partitions"] = [
             {"name":label,"exclude":rules["exclude"]} for label,rules in settings["partitions"].items()]
-        identity["stages"] = {name: {"kind":"source","version":spec["version"],
+        identity["stages"] = {name: {"kind":"source",
                                       "code":source_code(spec,root),"options":settings},
                               "edges":identity["stages"]["edges"]}
     return identity

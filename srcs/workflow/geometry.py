@@ -22,7 +22,7 @@ OPTION_KEYS = ("geometry",)
 
 @numerical_stage("geometry", OPTION_KEYS)
 def run(ctx):
-    folder = Path(ctx.output_dir("results", "geometry", "v1"))
+    folder = Path(ctx.output_dir("results", "geometry"))
     cfg = ctx.section("geometry")
     k = cfg.get("matched_candidates", 9)
     if not isinstance(k, int) or k < 1:
@@ -107,4 +107,4 @@ def run(ctx):
                 frame.loc[group.index,"variance_pc2"]=projection.explained_variance_ratio_[1]
         save_table(path, frame, index=False)
         files.append(path)
-    publish(folder/"index.json","geometry_metrics_v1","geometry_metrics_v1",files)
+    publish(folder/"index.json","geometry_metrics","geometry_metrics",files)

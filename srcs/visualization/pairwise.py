@@ -97,6 +97,10 @@ def run(ctx):
             fig.suptitle(f"{atlas} | {run_id} | {view['view']}")
             fig.colorbar(image, ax=axes.ravel().tolist(), label="Pattern Pearson r", shrink=.7, extend=audit["extend"])
             save(fig, f"{view['view']}_{atlas}_{run_id}")
+    from srcs.visualization.phase_pairwise import render
+    phase_files = render([(ctx.variables.get("series", "series"), p) for p in selection.get("phase_products", [])],
+                         folder, ctx.figure_dpi())
+    written.extend(Path(p).name for p in phase_files)
     save_json(folder / "index.json", dict(files=written, source=str(source), source_sha256=sha256(source),
         scale="pattern_Pearson_r_of_F_z", limits=[low, high], cmap=cmap.name,
         out_of_range="distinct under/over colors; values unchanged", data_ranges=ranges,

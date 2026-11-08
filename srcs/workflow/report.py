@@ -27,9 +27,9 @@ def redraw_saved(folder, section, dry_run=False):
 
 def report_inputs(ctx):
     root = Path(ctx.output_path)
-    return dict(geometry=root / "results/geometry/v1/index.json",
+    return dict(geometry=root / "results/geometry/index.json",
                 pairwise=Path(ctx.output_dir("results","pairwise",create=False))/"selection.json",
-                descriptive=root / "results/descriptive/v2/index.json",
+                descriptive=root / "results/descriptive/index.json",
                 stability=Path(ctx.output_dir("results","stability",create=False))/"index.json",
                 longitudinal=Path(ctx.output_dir("results","longitudinal",create=False))/"index.json",
                 combined=Path(ctx.statistics_path),
@@ -71,13 +71,13 @@ def run(ctx):
             figures.extend(sorted(Path(ctx.output_dir("report",item["section"],create=False)).rglob("*.png")))
     publish_report(ctx,figures,rendered,skipped)
     save_json(Path(ctx.output_dir("report")) / "index.json",
-              dict(schema="unified_report_v1", sections=rendered, code=code_identity()))
+              dict(schema="unified_report", sections=rendered, code=code_identity()))
     folder=Path(ctx.output_dir("report"))
-    ref=publish(folder/"products.json","unified_report_v1","unified_report_v1",
+    ref=publish(folder/"products.json","unified_report","unified_report",
                 [*figures,*(folder/name for name in ("report.html","report.pdf","manifest.json","index.json"))])
     if not getattr(ctx.args,"saved_output",None):
         save_json(Path(ctx.output_path)/"metadata/stages/report.json",
-                  dict(schema="stage_record_v1",stage="report",status="complete",
+                  dict(schema="stage_record",stage="report",status="complete",
                        options_digest=digest([ctx.viz(),ctx.section("report"),section]),
                        inputs=rendered,products=[dict(name=ref.name,schema=ref.schema,path=str(ref.path),sha256=ref.sha256)]))
     ctx.logger.info("Report sections: %s", ", ".join(r["section"] for r in rendered))

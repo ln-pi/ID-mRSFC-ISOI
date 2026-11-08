@@ -28,7 +28,11 @@ def load_products(root):
     root = Path(root)
     identity = json.loads((root/"metadata/data_identity.json").read_text(encoding="utf-8"))
     hashes = {}
-    for name in ("geometry/v1","inference/v1","descriptive/v2"):
+    for stage in ("pairwise", "longitudinal"):
+        optional = root/"results"/stage/("selection.json" if stage == "pairwise" else "index.json")
+        if optional.is_file():
+            hashes[stage] = sha256(optional)
+    for name in ("geometry/","inference/","descriptive/"):
         path = root/"results"/name/"index.json"
         index = json.loads(path.read_text(encoding="utf-8"))
         files = index["files"]
@@ -38,7 +42,7 @@ def load_products(root):
             if sha256(item) != expected:
                 raise ValueError(f"Changed product: {item}")
         hashes[name] = sha256(path)
-    folder=root/"results/geometry/v1"
+    folder=root/"results/geometry/"
     basis=json.loads((folder/"basis.json").read_text(encoding="utf-8"))
     points=pd.read_csv(folder/"points.csv").drop_duplicates(["atlas","cohort","week","run","mouse"])
     subjects=pd.read_csv(folder/"subjects.csv")
@@ -71,7 +75,7 @@ def compare(first,second,output_root=None,seed=42,repeats=200):
                        axis=1,join="inner").min(axis=1)
     cross_matrices=[]
     for side,root,frame in (("first",left,x),("second",right,y)):
-        matrix=pd.read_csv(root/"results/geometry/v1/distances.csv")
+        matrix=pd.read_csv(root/"results/geometry/distances.csv")
         matrix=matrix[(matrix.metric=="rms")&(matrix.query!=matrix.reference)]
         cross_matrices.append(matrix.assign(side=side))
         own=matrix[matrix.mouse==matrix.other].groupby(["atlas","cohort","week","query","mouse"]).distance.mean()
@@ -94,10 +98,10 @@ def compare(first,second,output_root=None,seed=42,repeats=200):
             updated=pd.DataFrame(scores).groupby(keys).agg({"q":"mean","margin":"mean"})
             aligned=updated.reindex(pd.MultiIndex.from_frame(frame[keys]))
             frame[["q","margin"]]=aligned[["q","margin"]].to_numpy()
-    payload=dict(schema="compare_identity_v1",a=digest(a),b=digest(b),inputs=[ha,hb],mode="paired" if paired else "independent",
+    payload=dict(schema="compare_identity",a=digest(a),b=digest(b),inputs=[ha,hb],mode="paired" if paired else "independent",
                  mice={"first":a["scope"]["mice"],"second":b["scope"]["mice"]},
                  code=digest(code_closure(PROJECT_ROOT,"srcs.workflow.compare")),seed=seed,repeats=repeats)
-    folder=(Path(output_root) if output_root else left.parent)/"_compare"/(left.name+"__vs__"+right.name+"_"+digest(payload)[:8])/"results/compare/v1"
+    folder=(Path(output_root) if output_root else left.parent)/"_compare"/(left.name+"__vs__"+right.name+"_"+digest(payload)[:8])/"results/compare/"
     rng=np.random.default_rng(seed)
     ids_a=np.array(sorted(a["scope"]["mice"]))
     ids_b=np.array(sorted(b["scope"]["mice"]))
@@ -180,7 +184,17 @@ def compare(first,second,output_root=None,seed=42,repeats=200):
         save_table(path,pd.DataFrame(table),index=False)
         paths.append(path)
     write_json(folder/"identity.json",payload)
-    publish(folder/"index.json","comparison_v1","comparison_v1",paths+[folder/"identity.json"])
+    from srcs.visualization.series_overlays import prepare_and_render
+    first_label, second_label = a["scope"]["series"], b["scope"]["series"]
+    if first_label == second_label:
+        first_label += "/" + a["scope"]["branch"]
+        second_label += "/" + b["scope"]["branch"]
+    prepare_and_render(left, right, folder, first_label, second_label)
+    for name in ("longitudinal_dispersion", "longitudinal_subjects", "longitudinal_phase_dispersion", "longitudinal_phase_subjects", "descriptive_regional"):
+        optional = folder/(name+".csv")
+        if optional.is_file():
+            paths.append(optional)
+    publish(folder/"index.json", "comparison", "comparison", paths+[folder/"identity.json"])
     from srcs.visualization.comparison import render
-    render(folder,left.name,right.name,paired)
+    render(folder,first_label,second_label,paired)
     return folder

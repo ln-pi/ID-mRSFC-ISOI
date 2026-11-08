@@ -71,7 +71,7 @@ def process_recording(ctx, week, mouse, run):
                            mask_root=ctx.mask_root, gsr=settings.get("gsr",True)),
         [filtered_path], lambda: check_filtered(filtered_path, affine_path, spatial_shape),
         dependencies=[affine_path, chamber_path],
-        parameters={"algorithm": "drr-gsr-filter-v1", "gsr":settings.get("gsr",True), "input_fps": 30, "output_fps": 5})
+        parameters={"algorithm": "drr-gsr-filter", "gsr":settings.get("gsr",True), "input_fps": 30, "output_fps": 5})
 
     return dict(input_path=raw_path)
 

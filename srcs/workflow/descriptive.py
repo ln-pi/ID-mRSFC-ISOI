@@ -20,7 +20,7 @@ OPTION_KEYS = ("descriptive",)
 
 @numerical_stage("descriptive", OPTION_KEYS)
 def run(ctx):
-    folder = Path(ctx.output_dir("results", "descriptive", "v2"))
+    folder = Path(ctx.output_dir("results", "descriptive"))
     cfg = ctx.section("descriptive")
     reference = cfg.get("reference_week", "03w")
     products, inputs, selection = [], [], []
@@ -141,4 +141,4 @@ def run(ctx):
     files = sorted(p for p in folder.glob("*.csv")) + [folder / "selection.json", folder / "methods.json"]
     save_json(folder / "index.json", dict(schema=SCHEMA, products=products,
         files=[dict(path=str(p), sha256=sha256(p)) for p in files]))
-    ctx.logger.info("Descriptive v2: %s atlas/cohort products", len(products))
+    ctx.logger.info("Descriptive: %s atlas/cohort products", len(products))
