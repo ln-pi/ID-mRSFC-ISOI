@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import spearmanr
 
-SCHEMA = "longitudinal_v1"
+SCHEMA = "longitudinal"
 
 
 def linear_slope(time, values):

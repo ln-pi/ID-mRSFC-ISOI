@@ -59,7 +59,7 @@ def process_recording(ctx, week, mouse, run):
     # --- Step 4: Affine atlas registration ---
     atlas_root = Path(__file__).resolve().parents[1] / "atlas"
     runner.run("step4_affine",
-        lambda: Affine_Atlas(processed_path=folder, mouse=mouse, trial=run),
+        lambda: Affine_Atlas(processed_path=folder, mouse=mouse, trial=run, visualization=ctx.viz()),
         [affine_path, preview_path],
         lambda: check_alignment(affine_path, preview_path, (tiff_shape(merged_path)[0], *spatial_shape)),
         dependencies=[merged_path, *[atlas_root / name for name in
@@ -67,14 +67,21 @@ def process_recording(ctx, week, mouse, run):
 
     # --- Step 5: dRR ---
     runner.run("step5_drr",
-        lambda: drr_narrow(processed_path=folder, mouse=mouse, trial=run, week=week, mask_root=ctx.mask_root),
+        lambda: drr_narrow(processed_path=folder, mouse=mouse, trial=run, week=week,
+                           mask_root=ctx.mask_root, gsr=settings.get("gsr",True)),
         [filtered_path], lambda: check_filtered(filtered_path, affine_path, spatial_shape),
         dependencies=[affine_path, chamber_path],
-        parameters={"algorithm": "drr-gsr-filter-v1", "input_fps": 30, "output_fps": 5})
+        parameters={"algorithm": "drr-gsr-filter", "gsr":settings.get("gsr",True), "input_fps": 30, "output_fps": 5})
 
     return dict(input_path=raw_path)
 
 
+from srcs.core.runtime import numerical_stage
+
+OPTION_KEYS = ("preprocess",)
+
+
+@numerical_stage("preprocess", OPTION_KEYS)
 def run(ctx):
     report = BatchReport(ctx, "01_preprocess")
     total = len(ctx.weeks) * len(ctx.mice) * len(ctx.runs)

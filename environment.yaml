@@ -19,8 +19,6 @@ dependencies:
   - statsmodels
   - pillow
   - tifffile
-  - jupyter
-  - ipykernel
   - pingouin
   - opencv-python-headless
   - numba

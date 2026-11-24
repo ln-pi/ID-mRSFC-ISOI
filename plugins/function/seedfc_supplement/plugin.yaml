@@ -1,0 +1,5 @@
+id: seedfc_supplement  #	Supplementary SeedFC metrics and reports.
+kind: function         #	Optional analysis plugin.
+batch:                 #	Run after the selected series finish.
+  source: seedfc       #	Require this FC source in the batch.
+  run: ':run_batch'    #	Python entry point for the comparison or batch.

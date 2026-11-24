@@ -2,10 +2,10 @@
 import json
 from pathlib import Path
 
-from srcs.analysis.connectome import load_arrays
+from srcs.utils.storage import load_arrays
 from srcs.analysis.magnitude import SCHEMA
 from srcs.utils.provenance import sha256
-from srcs.utils.results import save_json, save_table
+from srcs.utils.storage import save_json, save_table
 
 
 def verified_index(path):
@@ -18,10 +18,10 @@ def verified_index(path):
 
 
 def descriptive_products(ctx, atlas):
-    path = Path(ctx.output_path)/"results/descriptive/v2/index.json"
+    path = Path(ctx.output_path)/"results/descriptive/index.json"
     index = verified_index(path)
     if index["schema"] != SCHEMA:
-        raise ValueError("Run descriptive v2 first")
+        raise ValueError("Run descriptive first")
     products = {}
     for item in index["products"]:
         if item["atlas"] != atlas:

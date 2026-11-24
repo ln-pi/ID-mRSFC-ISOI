@@ -1,6 +1,6 @@
 # 配置与数组契约
 
-配置使用 YAML；相对路径以 main 根目录解析，绝对路径保持绝对路径语义。`configs/default.yaml` 是可用的 A 系列示例，不再是全 null 的占位模板。Aseries/Nseries 保留当前 10 鼠配置名单，实际分析鼠数由审计决定。
+配置使用 YAML；相对路径以 P3 工作树根目录解析，绝对路径保持绝对路径语义。`configs/default.yaml` 是可用的 A 系列示例，不再是全 null 的占位模板。系列配置记录有序鼠名单，各周实际有效样本数由数据审计决定。
 
 ## 配置字段
 
@@ -20,24 +20,69 @@
 | ID.completeness_mode | strict 全配置完整队列，或 cover 最大完整鼠×连续周窗口；只影响 combined |
 | ID.group_mode / session_seed | sequential/random、不重叠拆分及种子 |
 | ID.shuffle / n_iter | combined 身份重标记；包含并列的上尾 (b+1)/(B+1) |
-| Edge.seed | 保留的完整配置身份字段；固定 ID 配对使用 session_seed，不另做随机 edge 拆分 |
-| Edge.threshold / gap / cross_only / save_mat | edge 图参数 |
+| Edge.threshold / gap / cross_only / save_mat | edge 环形图显示参数；B5 起迁 `visualization.edge_graph`（L3），不再是 `edges` 的数值选项 |
 | pairwise.phases | 阶段名称→周标签，仅用于完整数组之后的选择 |
 | pairwise.phase_comparisons | 两个不重叠阶段的有向比较 |
 | pairwise.week_positions | 可选周数值位置，必须覆盖全部 Week_ids 且严格递增；默认解析 00w 等数字标签 |
 | pairwise.window_interpretation | N 疾病时间窗或 A 对齐观察窗的解释记录 |
 | descriptive.reference_week | 自身变化参照；默认 03w |
-| visualization | FC、combined 与统计图参数；pairwise 报告统一 r 色阶 [-1,1] |
+| visualization | 热图色图、色阶、展示周次、报告布局和诊断图样式 |
+| plugins.function.seedfc_supplement | SeedFC 补充分析开关、队列、数值阈值与矩阵示例周 |
+| plugins.source.seedfc | 外部 SeedFC 来源、分区和采集标签设置 |
+| plugins.function | 可选分析功能的开关和参数 |
 
-完整 parsed config 仍参与输出哈希，绘图参数也会改变结果目录。没有把源预处理身份、分析身份、绘图身份静默拆为新缓存体系。根入口接受 `--configs` 顺序批处理，默认 Aseries 和 Nseries；`--import-fc` 要求单一 `-c` 并从 edges 开始。`--report-section` 是运行选择参数，不修改配置身份，可单独重绘 pairwise/combined/statistics；`--report-root` 指定批次状态记录目录。
+数据范围、来源和处理选项及计算代码决定 data_tag。metadata/data_identity.json 保存数据身份。数值阶段在 metadata/stages 中记录自己的选项、输入和产品摘要；同目录内根据依赖重算。显示参数只影响报告。--tag 可追加目录后缀。
 
-已移除 Session_ids/Trial_ids、数值 group_mode 12/13/14、非空 repeat_id、supplement/DD/ND，以及重复固定配对的 Edge.repeat。旧数字脚本入口改为根 run.py/run.ps1；不对旧 YAML 进行隐式转换。
+已移除 Session_ids/Trial_ids、数值 group_mode 12/13/14、非空 repeat_id、supplement/DD/ND、重复固定配对的 Edge.repeat，以及无任何数值消费者的 Edge.seed。旧数字脚本入口改为根 run.py/run.ps1；不对旧 YAML 进行隐式转换。
+
+## 连续色图与显示范围
+
+`configs/default.yaml` 提供绘图默认值。运行配置可覆盖具体字段，所有项目配置键均带英文注释。已有结果可以应用一份只含 `visualization` 的 YAML 独立重绘。
+
+```yaml
+visualization:
+  time_start: baseline
+  colormaps:
+    sequential: inferno
+    diverging: coolwarm
+  color_scale:
+    mode: auto
+    scope: batch
+  metrics:
+    within_similarity:
+      color_scale:
+        mode: fixed
+        limits: [0.15, 1]
+```
+
+- `sequential` 用于大小、离散度、相似度和 direction 正负两侧各自的 RMS 幅度。图上颜色按原始数值递增，有符号 CV 保留原符号。 `diverging` 用于有符号 FC、带符号偏移和 ICC(A,1)/ICC(C,1)，0 位于色图中心。同一指标的角色通过 `metrics.<metric>.color_mode` 控制。
+- `auto` 从实际展示的有限值取最小和最大值。方差、SD、direction RMS 和 CV 的范围包含 0。相似度包含展示的对角线，组内相似矩阵还须有异鼠配对。相关距离的理论域为 [0,2]，模式 Pearson r 的理论域为 [-1,1]。分层热图分别按 network pair、ROI 汇集同批次的系列、视图、周次和分面，按量纲和指标确定各自色条。
+- 自动色阶按跨度除以 5，从 1、2、2.5、5、10 乘以 10 的整数次幂中选取不小于该间隔的最小值，向外取整。发散色阶以绝对值最大端为半宽，取对称范围。全零发散范围取 [-1,1]，从零起的全零顺序范围取 [0,1]。其他常量展开小跨度，全空值跳过对应色阶。刻度算法和 Pearson 理论边界是显示规则。
+- `fixed` 需要一对有限、严格递增的 `limits`，发散范围须关于 0 对称。指标覆盖优先于全局设置。默认 FC 和补充 ICC 采用 [-1,1]。越界细胞使用配置的 `under_color`、`over_color`，色条显示扩展端并记录越界数量。缺失颜色由 `missing_color` 设置。适用报告中的 `color_scales.json` 记录实测范围、显示范围、色图和有效、缺失、越界数量。
+- `time_start: start` 显示保存的全部分析周，`baseline` 从 `descriptive.reference_week` 开始显示。基线必须存在于选择的分析周次。阶段纵向统计复用可见周的结果，阶段相似性在阶段窗口变化时读经校验的 edge store 在内存中聚合。数值阶段输出保留原周次。 `display_cohorts` 控制几何、纵向和合并区域图的队列。
+- 组别、Run 标记、图网络类别及配准脑区类别由 `series_colors`、`view_markers`、`graph_palette` 和 `alignment.atlas_palette` 控制。旧保存配置的 pairwise 与 ID 色条限值仍可作为兼容入口，新配置统一使用 `metrics`。
+
+## 补充指标与代码内约束
+
+SeedFC 使用 `descriptive.weeks`、`descriptive.run_views`、`descriptive.reference_week` 与网络映射。 `plugins.function.seedfc_supplement.options.cohorts: [available_pair]` 下，周内指标取本周、该视图有效动物，参考周识别和 ICC 对两端有效鼠按 ID 对齐。 `mean_fc` 需要该鼠该周全部配置 Run 都有效。 `fixed_window` 按补充分析全范围共同完整及模式条件筛选，主 descriptive 的固定队列按视图定义。常量模式不参与模式 Pearson，仍可参与 SD。
+
+变量和公式约束留在计算实现里。包括 Fisher-z 的数值裁剪、唯一上三角边序、样本 SD 的 `ddof=1`、ICC 单次测量公式的两个测量端、每周离散度的分母及 NPZ 轴顺序。 `plugins.function.seedfc_supplement.options.icc_min_mice` 可调，默认 3。 `visualization.supplement.formats` 必须包含 PNG 供 HTML 预览。
+
+### 仍在代码中定义的可调策略
+
+| 范围 | 目前的设置 |
+| --- | --- |
+| 原生预处理 | 30 Hz 输入、5 Hz 输出、0.009–0.08 Hz 四阶 Butterworth，配准 4.2 mm 标定距离及 bin4 atlas 资源，Suite2p 注册参数组在代码中定义 |
+| 推断与稳定性 | 部分不确定区间分位点及纵向区间的最少有效重采样数在对应算法中定义 |
+| 图面细节 | 部分分面尺寸、每排图数、字号、透明度、布局和报告格式仍由各绘图函数指定 |
+
+这些条目属于本轮硬编码核查。上面的色图、色阶、显示窗口和补充分析选项可从配置调整。
 
 ## FC / edge store
 
 `correlation/<week>_correlation_matrices_<atlas>_excluded.pkl`：行是配置鼠，列是 Run，每个有效单元格为带一致 ROI 行列标签的 Pearson FC 方阵。原始表保持导入字节，以便来源复核和 FC 往返。
 
-`results/edges/<atlas>.npz`，schema=`fc_edges_v1`：
+`results/edges/<atlas>.npz`，schema=`fc_edges`：
 
 | 键 | 形状/口径 |
 | --- | --- |
@@ -54,7 +99,7 @@
 
 ## 每 Run 的 S
 
-`results/pairwise/<atlas>/<run_id>.npz`，schema=`pairwise_similarity_v1`：
+`results/pairwise/<atlas>/<run_id>.npz`，schema=`pairwise_similarity`：
 
 | 键 | 形状/口径 |
 | --- | --- |
@@ -69,7 +114,9 @@
 无效位置 S_r/S_z=NaN；同一采集自比较 S_r=1、S_z=NaN。不同采集恰好相关 ±1 时使用 nextafter 边界得到有限 z，并明确记录此规则。周对面板行=i@u、列=j@v，反向面板为转置。
 
 ```python
-from srcs.analysis.connectome import EdgeStore, load_arrays, SIM_SCHEMA
+from srcs.utils.edge_store import EdgeStore
+from srcs.utils.storage import load_arrays
+from srcs.analysis.connectome import SIM_SCHEMA
 store = EdgeStore.load("/absolute/output/results/edges/AUDv.npz")
 meta, values = load_arrays("/absolute/output/results/pairwise/AUDv/Run01.npz", SIM_SCHEMA)
 panel = values["S_r"][:, :, 4, 7]       # 04w → 07w (按保存标签核对位置)
@@ -88,7 +135,7 @@ pairwise 的 subjects_by_pair.csv 保留每周对、鼠、Run、窗口、cohort�
 
 本版没有预设更宽松的“阶段最低有效周数”、单 Run 替代或匹配间隔推断。CSV 保存实际标签对应的周数间隔，供后续相邻周/匹配间隔筛选。它不是实际采集日差；本次输入没有新增采集日期或失访原因资料。
 
-## 幅度与拓扑（descriptive v2）
+## 幅度与拓扑（descriptive）
 
 不改配置即可执行 `python run.py --stage descriptive`；数值结果通过 `--stage report --report-section descriptive` 独立绘图。代码更新后，先执行 `--stage edges` 重建代码身份已变化的缓存。
 
@@ -123,7 +170,7 @@ descriptive:
 
 N<2 时离散度、样本方差、LOO 偏离均标记未定义，不用单鼠制造零群体差异；单鼠自身欧式/RMS 距离仍为 0。缺失记录不填零，常量模式仍可计算幅度距离。距离矩阵主对角线不参与唯一成对距离汇总。
 
-输出目录 `results/descriptive/v2/`，schema=`descriptive_magnitude_topology_v2`：
+输出目录 `results/descriptive/`，schema=`descriptive_magnitude_topology`：
 
 - `<atlas>/<cohort>.npz`：`distance_euclidean/rms/correlation[W,V,N,N]`；`residual_group_loo/delta_from_reference[N,W,V,E]`；`edge_variance/group_mean[W,V,E]`；`valid_record[N,W,V]`、`n_valid_mice[W,V]`、`edge_index`。V 的 ID、Run 汇总规则和网络映射保存在 metadata。
 - `distances.csv`：每周/视图/队列的唯一非自身鼠对及三种距离，常量模式原因。
@@ -141,11 +188,11 @@ ROI 贡献将每条边的平方偏离能量（或边方差）各分一半给两�
 
 `report/descriptive/` 生成每视图的两队列离散度/样本数、逐鼠偏离轨迹、首个有效周的三种距离矩阵与全部小鼠 ΔFC 图、全周方差图、ROI/网络方差和示例方向图。所有周的全部鼠与两队列数值保存在上述数组/表中；图表使用保存产品，核查哈希后独立重绘。图中矩阵对角线不代表自连接，保持遮罩。
 
-旧 `results/descriptive/topology_<atlas>.npz` 等 v1 文件不作为 v2 输入，不会自动删除。v2 的 `residual_group_loo` 才是群体 ΔFC；旧 `delta_from_reference` 的自身参照含义不变。`descriptive` 阶段不估计置信区间、ICC、随机效应或组间推断；稳定性与纵向模型在下面的独立阶段计算。
+`residual_group_loo` 表示同组同周的群体 ΔFC，`delta_from_reference` 表示相对自身参照周的变化。`descriptive` 阶段不估计置信区间、ICC、随机效应或组间推断；稳定性与纵向模型在独立阶段计算。
 
 ## 稳定性与纵向演化
 
-`stability` 和 `longitudinal` 读取校验后的 descriptive v2 与 edge store；共同采用 `descriptive.weeks` 选择的窗口。时间位置沿用 `pairwise.week_positions`，默认从 `00w` 等数字周标签提取，非数字标签必须显式配置。位置是数值时间单位，不自动等于实际采集日期。
+`stability` 和 `longitudinal` 读取校验后的 descriptive 与 edge store；共同采用 `descriptive.weeks` 选择的窗口。时间位置沿用 `pairwise.week_positions`，默认从 `00w` 等数字周标签提取，非数字标签必须显式配置。位置是数值时间单位，不自动等于实际采集日期。
 
 ```yaml
 stability:
@@ -239,4 +286,4 @@ python run.py --stage report --report-section longitudinal
 | results/longitudinal/&lt;atlas&gt;/trajectories_&lt;cohort&gt;.npz | W×V 离散度、2×W×V 区间、N×W×V 偏离度、群体 FC/相邻周变化 |
 | report/stability / report/longitudinal | PNG/PDF、索引；无需源 FC/edge cache 的独立重绘 |
 
-两阶段各有 methods/index.json，保存 schema、数值输入 SHA256、完整规则、代码和 Statsmodels 等依赖版本。它们与幅度/拓扑 v2 分开保存，不改写旧指标的含义。
+两阶段各有 methods/index.json，保存 schema、数值输入 SHA256、完整规则、代码和 Statsmodels 等依赖版本。它们与幅度/拓扑分开保存，不改写旧指标的含义。

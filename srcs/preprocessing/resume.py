@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image
 import tifffile
 
-from srcs.utils.results import save_json
+from srcs.utils.storage import save_json
 
 
 def tiff_shape(path):
@@ -87,7 +87,8 @@ def signatures(paths):
         stat = path.stat()
         if not path.is_file() or stat.st_size <= 0:
             raise ValueError(f"Missing or empty file: {path}")
-        result.append([str(path.resolve()), stat.st_size, stat.st_mtime_ns])
+        from srcs.core.artifacts import sha256
+        result.append([str(path.resolve()), stat.st_size, sha256(path)])
     return result
 
 

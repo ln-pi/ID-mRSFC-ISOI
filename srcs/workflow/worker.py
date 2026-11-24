@@ -2,12 +2,13 @@
 import argparse
 from datetime import datetime, timezone
 import importlib
+import json
 from pathlib import Path
 
 from srcs.utils.config import load_context
 from srcs.utils.fc_import import import_fc
-from srcs.utils.results import save_json
-from srcs.workflow import STAGES, MODULES
+from srcs.utils.storage import save_json
+from srcs.core.runtime import select_steps
 
 def validate(ctx, stage, importing=False):
     _ = ctx.mice, ctx.weeks, ctx.runs, ctx.atlases, ctx.split_axis, ctx.selection_mode
@@ -36,16 +37,16 @@ def validate(ctx, stage, importing=False):
             print(f"{store.metadata['atlas']}: F {store.F_r.shape}; valid {store.valid_record.sum()}/{store.valid_record.size}")
         if stage == 'pairwise':
             from srcs.analysis.pairwise import selections, week_positions
-            selections(ctx)
-            week_positions(ctx)
+            selections(ctx.weeks, ctx.section("pairwise"))
+            week_positions(ctx.weeks, ctx.section("pairwise").get("week_positions"))
         if stage in ('stability', 'longitudinal'):
-            from srcs.utils.analysis_products import bootstrap_options, descriptive_products
+            from srcs.workflow.products import bootstrap_options, descriptive_products
             bootstrap_options(ctx, stage)
             for atlas in ctx.atlases:
                 descriptive_products(ctx, '_'.join(atlas))
             if stage == 'longitudinal':
                 from srcs.analysis.pairwise import week_positions
-                week_positions(ctx)
+                week_positions(ctx.weeks, ctx.section("pairwise").get("week_positions"))
         if stage == 'combined':
             from srcs.utils.dataset import select_complete_cohort
             mice, audit = select_complete_cohort(ctx)
@@ -58,38 +59,64 @@ def validate(ctx, stage, importing=False):
         from srcs.utils.dataset import statistics_metadata
         statistics_metadata(ctx, pd.read_pickle(ctx.statistics_path))
     elif stage == 'report':
-        from srcs.workflow.report import report_inputs
+        from srcs.workflow.report import report_inputs, selected_sections
         inputs = report_inputs(ctx)
         section = getattr(ctx.args, 'report_section', 'all')
-        paths = list(inputs.values()) if section == 'all' else [inputs[section]]
+        paths = [inputs[name] for name in selected_sections(ctx, inputs)]
         if not any(path.is_file() for path in paths):
-            raise FileNotFoundError(f'No saved numerical input for report section {section}')
+            print(f"No saved products for {section}; section will be marked skipped")
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', required=True)
     selection = parser.add_mutually_exclusive_group()
-    selection.add_argument('--stage', choices=STAGES)
-    selection.add_argument('--start', choices=STAGES, default='fc')
+    selection.add_argument('--stage')
+    selection.add_argument('--start')
     parser.add_argument('--dry-run', action='store_true')
     parser.add_argument('--import-fc')
-    parser.add_argument('--report-section', choices=('all', 'pairwise', 'descriptive', 'stability', 'longitudinal', 'combined', 'statistics'), default='all')
+    parser.add_argument('--tag')
+    parser.add_argument('--report-section', default='all')
+    parser.add_argument('--function', action='append', default=[])
     args = parser.parse_args(argv)
-    ctx = load_context(args.config, create_dirs=False)
+    ctx = load_context(args.config, create_dirs=False, enabled_functions=args.function)
+    ctx.args.tag = args.tag
+    if args.dry_run:
+        return execute(ctx,args,parser)
+    from srcs.core.runtime import exclusive_run
+    with exclusive_run(Path(ctx.output_path)/"metadata/workflow.lock"):
+        return execute(ctx,args,parser)
+
+
+def execute(ctx,args,parser):
+    identity_path = Path(ctx.output_path) / "metadata/data_identity.json"
+    if identity_path.exists() and json.loads(identity_path.read_text(encoding="utf-8")) != ctx.data_identity:
+        raise ValueError("Data identity collision; use a distinct --tag")
     ctx.args.report_section = args.report_section
-    stages = [args.stage] if args.stage else list(STAGES[STAGES.index(args.start):])
+    workflow = ctx.workflow
+    start = args.start or (workflow.source.spec["id"] if workflow.source else "fc")
+    stages = select_steps(workflow.order, stage=args.stage, start=None if args.stage else start)
+    workflow.validate_plan(stages)
     if args.import_fc and stages[0] != 'edges':
         parser.error('--import-fc requires --stage/--start edges')
     print(f'Output: {ctx.output_path}\nStages: {", ".join(stages)}', flush=True)
     if args.import_fc:
+        if not args.dry_run and not identity_path.exists():
+            save_json(identity_path, ctx.data_identity)
         details = import_fc(ctx, args.import_fc, dry_run=args.dry_run)
         print(f'FC import verified: {len(details["tables"])} tables; {details["audit_source"]}', flush=True)
-    validate(ctx, stages[0], importing=bool(args.import_fc))
+    first = workflow.stages[stages[0]]
+    if first.validate:
+        getattr(importlib.import_module(first.module), first.validate)(ctx)
+    else:
+        validate(ctx, stages[0], importing=bool(args.import_fc))
     if args.dry_run:
         return 0
+    if not identity_path.exists():
+        save_json(identity_path, ctx.data_identity)
     if not (Path(ctx.output_path) / "metadata/analysis_config.json").exists():
         ctx.save_analysis_metadata()
+    # Each stage validates when selected as a direct entry, or on demand in its adapter.
     for stage in stages:
         if stage == 'fc' and (Path(ctx.output_path) / 'metadata/fc_import_provenance.json').exists():
             raise ValueError('This output contains imported FC; start edges, or use a separate config to recompute FC')
@@ -99,7 +126,8 @@ def main(argv=None):
         save_json(marker, state)
         ctx.logger.info('Starting stage: %s', stage)
         try:
-            importlib.import_module(MODULES[stage]).run(ctx)
+            action = importlib.import_module(workflow.stages[stage].module).run
+            action(ctx)
         except BaseException as exc:
             state.update(status='interrupted' if isinstance(exc, KeyboardInterrupt) else 'failed', reason=str(exc))
             save_json(marker, state)

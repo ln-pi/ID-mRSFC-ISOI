@@ -8,8 +8,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from matplotlib import colormaps
+from srcs.utils.visualization import settings
+from srcs.visualization.scales import palette, resolve
 from matplotlib.collections import LineCollection
-from matplotlib.colors import LinearSegmentedColormap, to_rgb
 from matplotlib.patches import FancyArrowPatch
 
 from srcs.utils.logger import setup_logger
@@ -107,13 +108,15 @@ class circularGraph:
             cross_only=True,
             show=False,
             save_path=None,
-            save_mat=False
+            save_mat=False,
+            visualization=None
     ):
         self.A = np.array(A)
         self.N = self.A.shape[0]
 
         self.labels = labels if labels else [str(i) for i in range(self.N)]
 
+        self.visualization = settings() if visualization is None else visualization
         self.node_color_mode = node_color_mode
         self.node_color_spec = node_color_spec
 
@@ -159,7 +162,7 @@ class circularGraph:
         half = self.N // 2
 
         if self.node_color_mode == "gradient":
-            cmap = colormaps["viridis"].resampled(half)
+            cmap = palette(self.visualization, "sequential").resampled(half)
             left_color = [cmap(i) for i in range(half)]
             right_color = left_color[::-1]
             return left_color + right_color
@@ -169,7 +172,7 @@ class circularGraph:
                 logger.raise_(ValueError("'node_color_spec' required!"))
             
             left_color = [None] * half
-            cmap = colormaps["tab10"]
+            cmap = colormaps[self.visualization["graph_palette"]]
 
             left_nodes = [name for name in self.node_color_spec if name.endswith("_L")]
 
@@ -182,7 +185,7 @@ class circularGraph:
 
             gid = 0
             for prefix, indices in prefix_groups.items():
-                color = cmap(gid % 10)
+                color = cmap(gid % cmap.N)
 
                 for idx in indices:
                     left_color[idx] = color
@@ -390,22 +393,16 @@ class circularGraph:
         proportion_plot = proportion.copy()
         proportion_plot[tri_mask] = np.nan
         
-        try:
-            color = to_rgb(self.edge_fixed_color)
-        except ValueError:
-            raise ValueError(f"Invalid color name: {self.edge_fixed_color}")
-
-        cmap = LinearSegmentedColormap.from_list("custom", [(1, 1, 1), color])
-        cmap.set_bad(color="white")
+        scale = resolve(proportion_plot, self.visualization, "edge_contribution", anchor_zero=True, bounds=(0, 1))
 
         fig, ax = plt.subplots(figsize=(6, 6))
 
         for spine in ax.spines.values():
             spine.set_visible(False)
 
-        im = ax.imshow(proportion_plot, cmap=cmap, interpolation="none")
+        im = ax.imshow(proportion_plot, **scale.image, interpolation="none")
 
-        cbar = plt.colorbar(im, ax=ax)
+        cbar = plt.colorbar(im, ax=ax, extend=scale.extend)
         cbar.set_label("Edge proportion")
 
         ax.set_title("")

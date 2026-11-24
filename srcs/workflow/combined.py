@@ -9,9 +9,15 @@ from srcs.analysis.identification import identify, permutation_test
 from srcs.utils.dataset import select_complete_cohort, analysis_plan
 from srcs.utils.edge_store import load_store, store_path
 from srcs.utils.provenance import sha256
-from srcs.utils.results import save_json, save_pickle, save_table
+from srcs.utils.storage import save_json, save_pickle, save_table
 
 
+from srcs.core.runtime import numerical_stage
+
+OPTION_KEYS = ("analysis", "ID",)
+
+
+@numerical_stage("combined", OPTION_KEYS)
 def run(ctx):
     mice, audit = select_complete_cohort(ctx)
     weeks = audit["retained_weeks"]
@@ -23,7 +29,7 @@ def run(ctx):
     groups = ctx.group_indices(weeks, ctx.runs)
     split_groups = ctx.split_groups(weeks, ctx.runs)
     stores = {"_".join(a): load_store(ctx, "_".join(a)) for a in ctx.atlases}
-    metadata = dict(schema="week_mouse_run_v1", split_axis=ctx.split_axis,
+    metadata = dict(schema="week_mouse_run", split_axis=ctx.split_axis,
         selection_mode=ctx.selection_mode, conditions=conditions, split_groups=split_groups,
         mice=mice, weeks=weeks, runs=ctx.runs, averaging="mean_F_z_then_Pearson_never_mean_S",
         similarity_scale="Fisher_z_capped_at_4_for_P1_compatibility", disjoint_halves=True,

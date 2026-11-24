@@ -1,18 +1,10 @@
 """Code and input identities used by numerical products."""
-import hashlib
 from importlib.metadata import version
 from pathlib import Path
 import subprocess
+from srcs.core.artifacts import sha256
 
 ROOT = Path(__file__).resolve().parents[2]
-
-
-def sha256(path):
-    hasher = hashlib.sha256()
-    with Path(path).open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            hasher.update(block)
-    return hasher.hexdigest()
 
 
 def code_identity():

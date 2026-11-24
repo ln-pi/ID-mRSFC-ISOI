@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from srcs.analysis.statistics import individual_identifiability
-from srcs.utils.results import save_table, save_json
+from srcs.utils.storage import save_table, save_json
 
 
 

@@ -4,6 +4,10 @@ A Python workflow for studying individual differences and longitudinal changes i
 
 The project connects acquisition-level preprocessing, cortical functional connectivity (FC), individual identification, and longitudinal network analysis. Each mouse, week, and recording Run remains identifiable throughout the workflow, supporting both comparisons of individual recordings and comparisons of connectivity patterns averaged across observations.
 
+## Workflow and plugins
+
+The workflow supports native FC and audited SeedFC imports. Optional analysis plugins consume the saved edge store. Offline HTML/PDF reports and independent A/N or paired GSR displays use saved products. See the [workflow](docs/workflow.md) and [plugin contract](docs/plugin_contract.md).
+
 ## Features
 
 - OIS binary recording conversion, Suite2p motion correction, and interactive atlas registration.
@@ -176,12 +180,12 @@ python run.py -c configs/Aseries.yaml --stage report --report-section longitudin
 Results are organized by configuration:
 
 ```text
-data/output/<analysis_tag>/<dataset>/
+data/output/<data_tag>/
 ├── correlation/             Labeled FC matrices
 ├── results/
 │   ├── edges/               FC edge arrays, labels, and recording masks
 │   ├── pairwise/            Per-Run similarity arrays and week-pair/window summaries
-│   ├── descriptive/v2/      Distances, dispersion, Delta FC, regions, and examples
+│   ├── descriptive/      Distances, dispersion, Delta FC, regions, and examples
 │   ├── stability/           Repeatability, Delta FC persistence, variance components, ICC
 │   ├── longitudinal/        Trajectories, uncertainty, trends, network slopes and diagnostics
 │   ├── combined/            Identification, permutations, and Phi/DP
@@ -190,7 +194,7 @@ data/output/<analysis_tag>/<dataset>/
 └── metadata/                Configuration, source information, and recording/stage records
 ```
 
-Logs are stored at the configured log paths. Batch execution plans and status summaries are written under `reports/automatic/`. Generated data, reports, and logs are local outputs.
+The bundled configurations write logs to `data/output/_logs/`. Batch status summaries default to `_batches/` under the first configuration's output root. Generated data, reports, and logs are local outputs.
 
 ## Project structure
 

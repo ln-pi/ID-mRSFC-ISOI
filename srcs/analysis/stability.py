@@ -6,7 +6,7 @@ import numpy as np
 from srcs.analysis.connectome import pattern_pearson
 from srcs.analysis.magnitude import magnitude
 
-SCHEMA = "stability_v1"
+SCHEMA = "stability"
 
 
 def run_repeatability(store, weeks):

@@ -1,18 +1,36 @@
 """Persist per-Run tensors and the outputs of pure pairwise analysis."""
 from pathlib import Path
 import pandas as pd
-from srcs.analysis.connectome import pairwise_tensor, save_arrays
+from srcs.utils.storage import save_arrays
+from srcs.analysis.phases import similarities
+from srcs.analysis.connectome import pairwise_tensor
 from srcs.analysis.pairwise import selections, week_positions, analyze_views, METRICS, COLUMNS
 from srcs.utils.provenance import sha256
-from srcs.utils.results import save_json, save_table
+from srcs.utils.storage import save_json, save_table
 from srcs.utils.edge_store import load_store, store_path
 
 
+from srcs.core.runtime import numerical_stage
+
+OPTION_KEYS = ("pairwise",)
+
+
+@numerical_stage("pairwise", OPTION_KEYS)
 def run(ctx):
-    views, positions = selections(ctx), week_positions(ctx)
+    views, positions = selections(ctx.weeks, ctx.section("pairwise")), week_positions(ctx.weeks, ctx.section("pairwise").get("week_positions"))
     rows, audits, products = [], [], []
+    phase_products = []
     for atlas in ["_".join(a) for a in ctx.atlases]:
         store = load_store(ctx, atlas)
+        cases, phase_r, support = similarities(store, ctx.section("pairwise"))
+        if cases:
+            path = Path(ctx.output_dir("results", "pairwise", atlas)) / "phase_similarity.npz"
+            save_arrays(path, dict(schema="phase_similarity", atlas=atlas, cases=cases,
+                        mouse_ids=store.mice, phases=ctx.section("pairwise").get("phases", {}),
+                        averaging="mean_correlations is arithmetic mean of weekly Pearson r",
+                        exclusions="identical acquisitions excluded; mean-FC same-record diagonal masked; mean-correlation cross-week self values retained"),
+                        S_r=phase_r, n_pairs=support)
+            phase_products.append(dict(path=str(path), sha256=sha256(path), atlas=atlas))
         for run_id in store.runs:
             meta, arrays = pairwise_tensor(store, run_id)
             meta.update(edge_store=dict(path=str(store_path(ctx, atlas)), sha256=sha256(store_path(ctx, atlas))),
@@ -38,8 +56,8 @@ def run(ctx):
     else:
         summary = pd.DataFrame(columns=[*keys, *METRICS, "n_valid_pairs", "min_candidates", "max_candidates", "n_requested_pairs"])
     save_table(folder / "subjects_by_window.csv", summary, index=False)
-    save_json(folder / "selection.json", dict(schema="pairwise_selection_v1", selections=audits,
-        products=products, phases=ctx.section("pairwise").get("phases", {}), week_positions=positions,
+    save_json(folder / "selection.json", dict(schema="pairwise_selection", selections=audits,
+        products=products, phase_products=phase_products, phases=ctx.section("pairwise").get("phases", {}), week_positions=positions,
         phase_mean="mean_of_per_pair_per_mouse_metrics; not_metrics_of_mean_similarity",
         interpretation=ctx.section("pairwise").get("window_interpretation", "observation_windows"),
         scale="pattern_Pearson_r_of_F_z", inference="descriptive_only_mouse_is_unit",

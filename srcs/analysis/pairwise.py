@@ -6,29 +6,27 @@ import numpy as np
 from srcs.analysis.statistics import individual_identifiability
 
 
-def week_positions(ctx):
-    supplied = ctx.section("pairwise").get("week_positions")
+def week_positions(weeks, supplied=None):
     if supplied is None:
-        if not all(re.fullmatch(r"\d+w", w) for w in ctx.weeks):
+        if not all(re.fullmatch(r"\d+w", w) for w in weeks):
             raise ValueError("Provide pairwise.week_positions for non-numeric week IDs")
-        supplied = {w: int(w[:-1]) for w in ctx.weeks}
-    if (set(supplied) != set(ctx.weeks) or any(isinstance(x, bool) or not isinstance(x, (int, float))
+        supplied = {w: int(w[:-1]) for w in weeks}
+    if (set(supplied) != set(weeks) or any(isinstance(x, bool) or not isinstance(x, (int, float))
             or not np.isfinite(x) for x in supplied.values())
-            or any(supplied[b] <= supplied[a] for a, b in zip(ctx.weeks, ctx.weeks[1:]))):
+            or any(supplied[b] <= supplied[a] for a, b in zip(weeks, weeks[1:]))):
         raise ValueError("Week positions must be finite, strictly increasing, and cover all configured weeks")
     return supplied
 
 
-def selections(ctx):
+def selections(weeks, cfg):
     """Phase labels select full arrays, never alter their construction."""
-    cfg = ctx.section("pairwise")
     phases = cfg.get("phases", {})
     for name, ids in phases.items():
-        if not isinstance(ids, list) or not ids or len(set(ids)) != len(ids) or not set(ids) <= set(ctx.weeks):
+        if not isinstance(ids, list) or not ids or len(set(ids)) != len(ids) or not set(ids) <= set(weeks):
             raise ValueError(f"Invalid phase weeks: {name}")
-    views = {"all_weeks": list(combinations(ctx.weeks, 2))}
+    views = {"all_weeks": list(combinations(weeks, 2))}
     for name, ids in phases.items():
-        ordered = [w for w in ctx.weeks if w in ids]
+        ordered = [w for w in weeks if w in ids]
         views[f"within_{name}"] = list(combinations(ordered, 2))
     for request in cfg.get("phase_comparisons", []):
         if len(request) != 2 or any(p not in phases for p in request):
@@ -36,8 +34,8 @@ def selections(ctx):
         a, b = request
         if a == b or set(phases[a]) & set(phases[b]):
             raise ValueError("Between-phase windows must be distinct and disjoint")
-        views[f"{a}_to_{b}"] = [(u, v) for u in ctx.weeks if u in phases[a]
-                               for v in ctx.weeks if v in phases[b]]
+        views[f"{a}_to_{b}"] = [(u, v) for u in weeks if u in phases[a]
+                               for v in weeks if v in phases[b]]
     return views
 
 

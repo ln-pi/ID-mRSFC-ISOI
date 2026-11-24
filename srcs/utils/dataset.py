@@ -49,7 +49,7 @@ def select_complete_cohort(ctx):
         raise ValueError("At least one atlas is required")
     # Validate public options before reading data; cover always operates on weeks.
     _ = ctx.split_axis, ctx.selection_mode
-    from srcs.utils.output_paths import fc_reports
+    from srcs.utils.layout import fc_reports
     from srcs.utils.fc_import import verify_import
     verify_import(ctx)
     reports = fc_reports(ctx.output_path)
@@ -105,7 +105,7 @@ def select_complete_cohort(ctx):
     eligible = [c for c in candidates if c["eligible"]]
     chosen = max(eligible, key=lambda c: (c["score"], len(c["mice"]), -c["start_index"])) if eligible else None
     kept, selected = (chosen["mice"], chosen["weeks"]) if chosen else ([], [])
-    audit = dict(policy=mode, schema="week_mouse_run_v1", batch_report=str(report_path), tables=paths,
+    audit = dict(policy=mode, schema="week_mouse_run", batch_report=str(report_path), tables=paths,
                  configured_mice=mice, retained_mice=kept, configured_weeks=weeks, retained_weeks=selected,
                  excluded_weeks=[w for w in weeks if w not in selected], runs=runs, atlases=tags,
                  excluded_mice={m: reasons[m] for m in mice if m not in kept}, invalid_records=reasons,

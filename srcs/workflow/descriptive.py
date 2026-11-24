@@ -4,17 +4,23 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from srcs.analysis.connectome import save_arrays
+from srcs.utils.storage import save_arrays
 from srcs.analysis.descriptive import same_day_reliability
 from srcs.analysis.magnitude import SCHEMA, magnitude, select_views
 from srcs.analysis.topology import edge_layout, regional_summaries
-from srcs.utils.results import save_json, save_table
+from srcs.utils.storage import save_json, save_table
 from srcs.utils.edge_store import load_store, store_path
 from srcs.utils.provenance import code_identity, sha256
 
 
+from srcs.core.runtime import numerical_stage
+
+OPTION_KEYS = ("descriptive",)
+
+
+@numerical_stage("descriptive", OPTION_KEYS)
 def run(ctx):
-    folder = Path(ctx.output_dir("results", "descriptive", "v2"))
+    folder = Path(ctx.output_dir("results", "descriptive"))
     cfg = ctx.section("descriptive")
     reference = cfg.get("reference_week", "03w")
     products, inputs, selection = [], [], []
@@ -135,4 +141,4 @@ def run(ctx):
     files = sorted(p for p in folder.glob("*.csv")) + [folder / "selection.json", folder / "methods.json"]
     save_json(folder / "index.json", dict(schema=SCHEMA, products=products,
         files=[dict(path=str(p), sha256=sha256(p)) for p in files]))
-    ctx.logger.info("Descriptive v2: %s atlas/cohort products", len(products))
+    ctx.logger.info("Descriptive: %s atlas/cohort products", len(products))

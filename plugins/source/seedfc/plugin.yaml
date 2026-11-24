@@ -1,0 +1,9 @@
+id: seedfc                                                   #	Registered input source identifier.
+kind: source                                                 #	Plugin role in the workflow.
+requires: []                                                 #	Products required before the input adapter runs.
+produces: []                                                 #	The adapter writes native weekly FC tables in place of fc.
+validate_options: ':validate_options'                        #	Validate source options against the series.
+validate: validate                                           #	Validate recordings before import.
+before: [edges]                                              #	Schedule the input adapter before edge extraction.
+numerics: [__init__.py]                                      #	Code that affects imported FC data identity.
+kernel: []                                                   #	Additional numerical modules included in the source identity.

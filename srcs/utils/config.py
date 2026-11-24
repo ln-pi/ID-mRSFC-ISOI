@@ -1,11 +1,10 @@
 import os
-import hashlib
-import json
+from functools import cached_property
 from dataclasses import dataclass
 from typing import Any
 from pathlib import Path
 from argparse import Namespace
-from srcs.utils.output_paths import output_parts
+from srcs.utils.layout import output_parts
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -90,11 +89,14 @@ class RunContext:
 
     @property
     def processed_path(self):
-        return os.path.join(self.processed_root, self.dataset)
+        base = os.path.join(self.processed_root, self.dataset)
+        return base if self.config.get("preprocess",{}).get("gsr",True) else os.path.join(base,"noGSR")
 
     @property
     def output_path(self):
-        return os.path.join(self.output_root, self.analysis_tag, self.dataset)
+        if getattr(self.args,"saved_output",None):
+            return str(self.args.saved_output)
+        return os.path.join(self.output_root, self.analysis_tag)
 
     @property
     def session_seed(self):
@@ -117,20 +119,24 @@ class RunContext:
         ids = (self.weeks if weeks is None else weeks) if self.split_axis == "week" else (self.runs if runs is None else runs)
         return [[ids[i] for i in group] for group in self.group_indices(weeks, runs)]
 
+    @cached_property
+    def workflow(self):
+        from srcs.workflow import Workflow
+        return Workflow(self.config, PROJECT_ROOT, resolve_source=not getattr(self.args, "saved_output", None))
+
+    @cached_property
+    def data_identity(self):
+        from srcs.workflow.identity import data_identity
+        return data_identity(self, PROJECT_ROOT)
+
     @property
     def analysis_tag(self):
-        edge_seed = self.section("Edge").get("seed", 42)
-        if isinstance(edge_seed, bool) or not isinstance(edge_seed, int) or edge_seed < 0:
-            raise ValueError("Edge.seed must be a nonnegative integer for reproducible analysis.")
-        identity = self.config  # Deterministic isolation by the complete parsed configuration.
-        digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:10]
-        repeat_id = self.section("ID").get("repeat_id")
-        repeat = f"_repeat{repeat_id}" if repeat_id is not None else ""
-        return f"seed_{self.group_mode}_{self.session_seed}{repeat}_edge{edge_seed}_{digest}"
+        from srcs.workflow.identity import data_tag
+        return data_tag(self.data_identity, getattr(self.args, "tag", None))
 
     @property
     def correlation_path(self):
-        from srcs.utils.output_paths import correlation_folder
+        from srcs.utils.layout import correlation_folder
         return str(correlation_folder(self.output_path))
 
     @property
@@ -145,7 +151,7 @@ class RunContext:
         return os.path.join(self.output_dir("Identification", create=False), self.statistics_file)
 
     def save_analysis_metadata(self, selection=None):
-        from srcs.utils.results import save_json
+        from srcs.utils.storage import save_json
         save_json(os.path.join(self.output_dir("Metadata"), "analysis_config.json"), {
             "config": self.config, "split_axis": self.split_axis,
             "selection_mode": self.selection_mode, "session_seed": self.session_seed,
@@ -154,10 +160,26 @@ class RunContext:
         })
 
     def section(self, name, default=None):
+        stage=getattr(self,"stage",None)
+        if stage is not None:
+            return stage.section(name)
         return self.config.get(name, default or {})
 
+    def execute_stage(self,name,action):
+        from srcs.workflow.records import run_cached
+        return run_cached(self,name,action)
+
+    @property
+    def inputs(self):
+        return self.stage.inputs
+
+    @property
+    def data_tag(self):
+        return self.analysis_tag
+
     def viz(self, name=None, default=None):
-        visualization = self.config.get("visualization", {})
+        from srcs.utils.visualization import settings
+        visualization = settings(self.config)
         if name is None:
             return visualization
         return visualization.get(name, default or {})
@@ -183,7 +205,13 @@ class RunContext:
         return self.viz("defaults").get("render_dpi", self.figure_dpi())
 
     def output_dir(self, *parts, create=True):
-        path = os.path.join(self.output_path, *output_parts(parts))
+        mapped = output_parts(parts)
+        base = self.output_path
+        if mapped and mapped[0] == "results/combined":
+            mapped = ("results","combined",*mapped[1:])
+        if mapped and mapped[0].split("/")[0] == "report":
+            base = getattr(self.args,"redraw_root",base)
+        path = os.path.join(base, *mapped)
         if create:
             os.makedirs(path, exist_ok=True)
         return path
@@ -203,11 +231,16 @@ def load_config(path):
     return config
 
 
-def load_context(config_path=None, create_dirs=True):
+def load_context(config_path=None, create_dirs=True, *, enabled_functions=()):
     args = Namespace(config=str(config_path or "configs/Aseries.yaml"))
     args.config = str((PROJECT_ROOT / args.config).resolve())
 
     config = load_config(args.config)
+    if enabled_functions:
+        from srcs.workflow.plugins import enable_functions
+        config = enable_functions(config, enabled_functions)
+    from srcs.utils.visualization import settings, validate
+    validate(settings(config))
     if any(not isinstance(config.get("paths", {}).get(key), str) or not config["paths"][key]
            for key in ("raw", "processed", "output", "mask", "log")):
         raise ValueError("paths requires nonempty raw/processed/output/mask/log strings")

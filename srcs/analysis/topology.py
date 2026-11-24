@@ -17,20 +17,26 @@ def edge_layout(roi_labels, edge_index, network_mapping=None):
         raise ValueError("descriptive.network_mapping must map every included ROI to a nonempty network")
     families, hemispheres = [], []
     for label in roi_labels:
-        match = re.fullmatch(r"([A-Z]+)-.+_([LR])", label)
+        match = re.fullmatch(r"([A-Z]+)(?:-.+)?_([LR])", label)
         families.append(match[1] if match and match[1] in ATLAS_FAMILIES else None)
         hemispheres.append(match[2] if match else None)
     networks = ([network_mapping[r] for r in roi_labels] if network_mapping is not None else families)
     network_kind = "user_defined" if network_mapping is not None else "atlas_anatomical_families"
     groups = []
     a, b = edge_index
-    for i, roi in enumerate(roi_labels):
+    roi_order = list(network_mapping) if network_mapping else list(roi_labels)
+    roi_positions = {roi: i for i, roi in enumerate(roi_labels)}
+    for roi in roi_order:
+        if roi not in roi_positions:
+            continue
+        i = roi_positions[roi]
         groups.append(dict(level="roi", name=roi, indices=np.flatnonzero((a == i) | (b == i)),
                            allocation=.5))
     if all(g is not None for g in networks):
-        for first, second in combinations_with_replacement(sorted(set(networks)), 2):
+        network_order = list(dict.fromkeys(network_mapping.values())) if network_mapping else sorted(set(networks))
+        for first, second in combinations_with_replacement(network_order, 2):
             indices = [e for e, (i, j) in enumerate(zip(a, b))
-                       if tuple(sorted((networks[i], networks[j]))) == (first, second)]
+                       if {networks[i], networks[j]} == {first, second}]
             if indices:
                 groups.append(dict(level="network_pair", name=f"{first} | {second}",
                                    indices=np.asarray(indices), allocation=1.))
