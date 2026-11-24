@@ -1,6 +1,6 @@
 # 配置与数组契约
 
-配置使用 YAML；相对路径以 P3 工作树根目录解析，绝对路径保持绝对路径语义。`configs/default.yaml` 是可用的 A 系列示例，不再是全 null 的占位模板。Aseries/Nseries 保留当前 10 鼠配置名单，实际分析鼠数由审计决定。
+配置使用 YAML；相对路径以 P3 工作树根目录解析，绝对路径保持绝对路径语义。`configs/default.yaml` 是可用的 A 系列示例，不再是全 null 的占位模板。系列配置记录有序鼠名单，各周实际有效样本数由数据审计决定。
 
 ## 配置字段
 
@@ -26,11 +26,56 @@
 | pairwise.week_positions | 可选周数值位置，必须覆盖全部 Week_ids 且严格递增；默认解析 00w 等数字标签 |
 | pairwise.window_interpretation | N 疾病时间窗或 A 对齐观察窗的解释记录 |
 | descriptive.reference_week | 自身变化参照；默认 03w |
-| visualization | FC、combined 与统计图参数；pairwise 报告统一 r 色阶 [-1,1] |
+| visualization | 热图色图、色阶、展示周次、报告布局和诊断图样式 |
+| seedfc_supplement | SeedFC 补充分析开关、队列、数值阈值与矩阵示例周 |
+| compare | 比较重采样种子、重复数和异鼠候选上限 |
 
 数据范围、来源和处理选项及计算代码决定 data_tag。metadata/data_identity.json 保存数据身份。数值阶段在 metadata/stages 中记录自己的选项、输入和产品摘要；同目录内根据依赖重算。显示参数只影响报告。--tag 可追加目录后缀。
 
 已移除 Session_ids/Trial_ids、数值 group_mode 12/13/14、非空 repeat_id、supplement/DD/ND、重复固定配对的 Edge.repeat，以及无任何数值消费者的 Edge.seed。旧数字脚本入口改为根 run.py/run.ps1；不对旧 YAML 进行隐式转换。
+
+## 连续色图与显示范围
+
+`configs/default.yaml` 提供绘图默认值。运行配置可覆盖具体字段，所有项目配置键均带英文注释。已有结果可以应用一份只含 `visualization` 的 YAML 独立重绘。
+
+```yaml
+visualization:
+  time_start: baseline
+  colormaps:
+    sequential: inferno
+    diverging: coolwarm
+  color_scale:
+    mode: auto
+    scope: batch
+  metrics:
+    within_similarity:
+      color_scale:
+        mode: fixed
+        limits: [0.15, 1]
+```
+
+- `sequential` 用于大小、离散度、相似度和 direction 正负两侧各自的 RMS 幅度。图上颜色按原始数值递增，有符号 CV 保留原符号。 `diverging` 用于有符号 FC、带符号偏移和 ICC(A,1)/ICC(C,1)，0 位于色图中心。同一指标的角色通过 `metrics.<metric>.color_mode` 控制。
+- `auto` 从实际展示的有限值取最小和最大值。方差、SD、direction RMS 和 CV 的范围包含 0。相似度包含展示的对角线，组内相似矩阵还须有异鼠配对。相关距离的理论域为 [0,2]，模式 Pearson r 的理论域为 [-1,1]。分层热图分别按 network pair、ROI 汇集同批次的系列、视图、周次和分面，按量纲和指标确定各自色条。
+- 自动色阶按跨度除以 5，从 1、2、2.5、5、10 乘以 10 的整数次幂中选取不小于该间隔的最小值，向外取整。发散色阶以绝对值最大端为半宽，取对称范围。全零发散范围取 [-1,1]，从零起的全零顺序范围取 [0,1]。其他常量展开小跨度，全空值跳过对应色阶。刻度算法和 Pearson 理论边界是显示规则。
+- `fixed` 需要一对有限、严格递增的 `limits`，发散范围须关于 0 对称。指标覆盖优先于全局设置。默认 FC 和补充 ICC 采用 [-1,1]。越界细胞使用配置的 `under_color`、`over_color`，色条显示扩展端并记录越界数量。缺失颜色由 `missing_color` 设置。适用报告中的 `color_scales.json` 记录实测范围、显示范围、色图和有效、缺失、越界数量。
+- `time_start: start` 显示保存的全部分析周，`baseline` 从 `descriptive.reference_week` 开始显示。基线必须存在于选择的分析周次。阶段纵向统计复用可见周的结果，阶段相似性在阶段窗口变化时读经校验的 edge store 在内存中聚合。数值阶段输出保留原周次。 `display_cohorts` 控制几何、纵向和合并区域图的队列。
+- 组别、Run 标记、图网络类别及配准脑区类别由 `series_colors`、`view_markers`、`graph_palette` 和 `alignment.atlas_palette` 控制。旧保存配置的 pairwise 与 ID 色条限值仍可作为兼容入口，新配置统一使用 `metrics`。
+
+## 补充指标与代码内约束
+
+SeedFC 使用 `descriptive.weeks`、`descriptive.run_views`、`descriptive.reference_week` 与网络映射。 `seedfc_supplement.cohorts: [available_pair]` 下，周内指标取本周、该视图有效动物，参考周识别和 ICC 对两端有效鼠按 ID 对齐。 `mean_fc` 需要该鼠该周全部配置 Run 都有效。 `fixed_window` 按补充分析全范围共同完整及模式条件筛选，主 descriptive 的固定队列按视图定义。常量模式不参与模式 Pearson，仍可参与 SD。
+
+变量和公式约束留在计算实现里。包括 Fisher-z 的数值裁剪、唯一上三角边序、样本 SD 的 `ddof=1`、ICC 单次测量公式的两个测量端、每周离散度的分母及 NPZ 轴顺序。 `seedfc_supplement.icc_min_mice` 可调，默认 3。 `visualization.supplement.formats` 必须包含 PNG 供 HTML 预览。
+
+### 仍在代码中定义的可调策略
+
+| 范围 | 目前的设置 |
+| --- | --- |
+| 原生预处理 | 30 Hz 输入、5 Hz 输出、0.009–0.08 Hz 四阶 Butterworth，配准 4.2 mm 标定距离及 bin4 atlas 资源，Suite2p 注册参数组在代码中定义 |
+| 推断与稳定性 | 部分不确定区间分位点及纵向区间的最少有效重采样数在对应算法中定义 |
+| 图面细节 | 部分分面尺寸、每排图数、字号、透明度、布局和报告格式仍由各绘图函数指定 |
+
+这些条目属于本轮硬编码核查。上面的色图、色阶、显示窗口和补充分析选项可从配置调整。
 
 ## FC / edge store
 

@@ -10,7 +10,7 @@ from srcs.core.contracts import StageResult
 from srcs.core.identity import digest
 
 
-def redraw_saved(folder, section, dry_run=False):
+def redraw_saved(folder, section, dry_run=False, visualization_config=None):
     from argparse import Namespace
     from srcs.utils.config import RunContext
     from srcs.utils.logger import setup_logger
@@ -18,7 +18,14 @@ def redraw_saved(folder, section, dry_run=False):
     from srcs.utils.config import PROJECT_ROOT
     from uuid import uuid4
     target = PROJECT_ROOT/"reports"/"redraw"/(folder.name+"_"+uuid4().hex[:8])
-    ctx = RunContext(Namespace(saved_output=folder,report_section=section,redraw_root=target),metadata["config"],setup_logger())
+    from srcs.utils.config import load_config
+    from srcs.utils.visualization import merge, settings, validate
+    config = metadata["config"]
+    if visualization_config:
+        override = load_config(PROJECT_ROOT / visualization_config)
+        config = merge(config, {"visualization": override.get("visualization", override)})
+    validate(settings(config))
+    ctx = RunContext(Namespace(saved_output=folder,report_section=section,redraw_root=target),config,setup_logger())
     if not dry_run:
         run(ctx)
         print(f"Report saved under {target}")
@@ -40,6 +47,14 @@ def run(ctx):
     section = getattr(ctx.args, "report_section", "all")
     inputs = report_inputs(ctx)
     selected = list(inputs) if section == "all" else [section]
+    render_key = digest([ctx.viz(), ctx.section("report"), ctx.section("descriptive"), section,
+                         {name: sha256(inputs[name]) for name in selected if inputs[name].is_file()}])
+    if not getattr(ctx.args, "saved_output", None):
+        previous = Path(ctx.output_dir("report", create=False)) / "index.json"
+        if previous.is_file():
+            previous_key = json.loads(previous.read_text(encoding="utf-8")).get("render_key")
+            if previous_key != render_key:
+                ctx.args.redraw_root = Path(ctx.output_path) / "rendered_reports" / render_key
     rendered = []
     figures, skipped = [], []
     for name in selected:
@@ -71,14 +86,14 @@ def run(ctx):
             figures.extend(sorted(Path(ctx.output_dir("report",item["section"],create=False)).rglob("*.png")))
     publish_report(ctx,figures,rendered,skipped)
     save_json(Path(ctx.output_dir("report")) / "index.json",
-              dict(schema="unified_report", sections=rendered, code=code_identity()))
+              dict(schema="unified_report", sections=rendered, render_key=render_key, code=code_identity()))
     folder=Path(ctx.output_dir("report"))
     ref=publish(folder/"products.json","unified_report","unified_report",
                 [*figures,*(folder/name for name in ("report.html","report.pdf","manifest.json","index.json"))])
     if not getattr(ctx.args,"saved_output",None):
         save_json(Path(ctx.output_path)/"metadata/stages/report.json",
                   dict(schema="stage_record",stage="report",status="complete",
-                       options_digest=digest([ctx.viz(),ctx.section("report"),section]),
+                       options_digest=render_key,
                        inputs=rendered,products=[dict(name=ref.name,schema=ref.schema,path=str(ref.path),sha256=ref.sha256)]))
     ctx.logger.info("Report sections: %s", ", ".join(r["section"] for r in rendered))
     return StageResult((ref,))

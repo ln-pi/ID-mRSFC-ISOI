@@ -7,6 +7,7 @@ import pandas as pd
 from srcs.utils.dataset import statistics_metadata
 from srcs.visualization.plot_series import PlotSeries
 from srcs.visualization.circular_graph import circularGraph
+from srcs.visualization.scales import resolve
 
 LABELS = {"SM_VIS_AUD": "Association", "PF_LAT_MED_AUDv": "Sensory excluding AUDv",
           "AUDv": "Whole Brain excluding AUDv"}
@@ -23,14 +24,16 @@ def render_identification(ctx, atlas, condition, result, folder):
     plot(ctx, [result["group"], result["individual"]], "paired_vertical",
          f"IDtest_paired_{atlas}_excluded_{condition}", folder, ctx.viz_style("id_paired"))
     style = ctx.viz_style("id_similarity_matrix")
-    low, high = style.pop("vmin_default", 1.2), style.pop("vmax_default", 3.0)
-    association = style.pop("vmin_association", 2.0), style.pop("vmax_association", 3.5)
-    limits = style.pop("limits_by_atlas", {}).get(atlas, association if atlas == "SM_VIS_AUD" else (low, high))
-    if len(limits) != 2 or not np.isfinite(limits).all() or limits[0] >= limits[1]:
-        raise ValueError(f"Invalid similarity color limits for {atlas}")
+    viz = ctx.viz()
+    legacy_limits = style.pop("limits_by_atlas", {}).get(atlas, style.pop("default_limits", None))
+    explicit_policy = ctx.config.get("visualization", {}).get("metrics", {}).get("id_similarity_matrix")
+    scale = resolve(result["similarity"], viz, "id_similarity_matrix",
+                    fixed=None if explicit_policy else legacy_limits)
+    if scale is None:
+        return
     tick_size = style.pop("tick_fontsize", 10)
     mice = result["mice"]
-    style.update(vmin=limits[0], vmax=limits[1], xlabel="2nd half", ylabel="1st half",
+    style.update(**scale.image, cbar_extend=scale.extend, xlabel="2nd half", ylabel="1st half",
         xticks=dict(ticks=np.arange(len(mice)), labels=mice, rotation=90, fontsize=tick_size),
         yticks=dict(ticks=np.arange(len(mice)), labels=mice, rotation=0, fontsize=tick_size))
     plot(ctx, result["similarity"], "origin", f"IDtest_simMat_{atlas}_excluded_{condition}", folder, style)
@@ -80,7 +83,7 @@ def run(ctx):
                     target = Path(ctx.output_dir("IdentificationFigures", str(condition), "edges"))
                     matrix = frame.to_numpy()
                     circularGraph(matrix, [label.split("-", 1)[-1] for label in result["roi_labels"]],
-                        **ctx.viz_style(f"edge_{metric}"), node_color_spec=result["roi_labels"],
+                        visualization=ctx.viz(), **ctx.viz_style(f"edge_{metric}"), node_color_spec=result["roi_labels"],
                         threshold=np.percentile(matrix, options.get("threshold", 99)), gap=options.get("gap", .25),
                         cross_only=options.get("cross_only", False), show=ctx.render_options()["show"],
                         save_path=str(target / f"EdgeContri_{metric}_{atlas}_excluded_thres{options.get('threshold',99)}_{condition}")

@@ -173,7 +173,8 @@ class RunContext:
         return self.analysis_tag
 
     def viz(self, name=None, default=None):
-        visualization = self.config.get("visualization", {})
+        from srcs.utils.visualization import settings
+        visualization = settings(self.config)
         if name is None:
             return visualization
         return visualization.get(name, default or {})
@@ -230,6 +231,8 @@ def load_context(config_path=None, create_dirs=True):
     args.config = str((PROJECT_ROOT / args.config).resolve())
 
     config = load_config(args.config)
+    from srcs.utils.visualization import settings, validate
+    validate(settings(config))
     if any(not isinstance(config.get("paths", {}).get(key), str) or not config["paths"][key]
            for key in ("raw", "processed", "output", "mask", "log")):
         raise ValueError("paths requires nonempty raw/processed/output/mask/log strings")

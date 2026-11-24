@@ -54,7 +54,29 @@ def load_products(root):
     return identity, hashes, basis, points
 
 
-def compare(first,second,output_root=None,seed=42,repeats=200):
+def compare(first, second, output_root=None, seed=None, repeats=None, *, configs=None):
+    from srcs.utils.visualization import saved_config, settings, validate
+    from srcs.utils.config import PROJECT_ROOT, load_config
+    from srcs.utils.visualization import merge
+    configs = configs or [saved_config(first), saved_config(second)]
+    display_config = configs[0]
+    viz = settings(display_config)
+    validate(viz)
+    # Compare only settings consumed by the shared renderers.
+    shared = ("time_start", "colormaps", "color_scale", "metrics", "missing_color",
+              "under_color", "over_color", "display_cohorts", "series_colors",
+              "view_markers", "trajectory_figsize")
+    second_viz = settings(configs[1])
+    if any(viz.get(key) != second_viz.get(key) for key in shared):
+        raise ValueError("Comparison requires matching shared visualization settings")
+    reference = display_config.get("descriptive", {}).get("reference_week")
+    if viz["time_start"] == "baseline" and reference != configs[1].get("descriptive", {}).get("reference_week"):
+        raise ValueError("Comparison requires matching plot baselines")
+    if viz["time_start"] == "baseline" and display_config.get("pairwise", {}).get("phases") != configs[1].get("pairwise", {}).get("phases"):
+        raise ValueError("Comparison requires matching phase definitions")
+    options = merge(load_config(PROJECT_ROOT / "configs/default.yaml")["compare"], display_config.get("compare", {}))
+    seed = options["seed"] if seed is None else seed
+    repeats = options["repeats"] if repeats is None else repeats
     left,right = map(lambda p:Path(p).resolve(),(first,second))
     a,ha,ba,x=load_products(left)
     b,hb,bb,y=load_products(right)
@@ -70,6 +92,72 @@ def compare(first,second,output_root=None,seed=42,repeats=200):
     if paired and (set(a["scope"]["mice"])!=set(b["scope"]["mice"]) or
                    set(map(tuple,x[keys].values))!=set(map(tuple,y[keys].values))):
         raise ValueError("Paired branches differ in mouse or valid acquisition membership")
+    from srcs.core.runtime import exclusive_run
+    from tempfile import mkdtemp
+    from uuid import uuid4
+    from shutil import copy2
+
+    payload = dict(schema="compare_identity", a=digest(a), b=digest(b), inputs=[ha, hb],
+                   mode="paired" if paired else "independent",
+                   mice={"first": a["scope"]["mice"], "second": b["scope"]["mice"]},
+                   code=digest(code_closure(PROJECT_ROOT, "srcs.workflow.compare")),
+                   positions=positions, seed=seed, repeats=repeats, candidate_limit=options["candidate_limit"])
+    base = (Path(output_root).resolve() if output_root else left.parent) / "_compare"
+    numeric_key = digest(payload)
+    numeric = base / "_numeric" / numeric_key
+    with exclusive_run(numeric.parent / f"{numeric_key}.lock"):
+        from srcs.workflow.products import verified_index
+        try:
+            record = verified_index(numeric / "index.json")
+        except (OSError, ValueError, KeyError):
+            record = None
+        if record is None:
+            pending = Path(mkdtemp(prefix=f".{numeric_key}.", dir=numeric.parent))
+            products = calculate_comparison(pending, x, y, left, right, a, b, paired, positions,
+                                            seed, repeats, options["candidate_limit"], payload)
+            # Publish the index using the paths after the atomic directory move.
+            write_json(pending / "index.json", dict(schema="comparison_numeric",
+                files=[dict(path=str(numeric / path.name), sha256=sha256(path))
+                       for path in [*products, pending / "identity.json"]]))
+            if numeric.exists():
+                numeric.rename(numeric.with_name(f".{numeric.name}.{uuid4().hex}.invalid"))
+            pending.rename(numeric)
+            record = verified_index(numeric / "index.json")
+    render_modules = ["comparison.py", "series_overlays.py", "phase_pairwise.py", "scales.py"]
+    renderer = [sha256(PROJECT_ROOT / "srcs" / "visualization" / name) for name in render_modules]
+    display_key = digest([numeric_key, viz, reference, display_config.get("pairwise", {}), renderer])
+    folder = base / f"{left.name}__vs__{right.name}_{display_key[:8]}" / "results/compare"
+    with exclusive_run(folder.parent / "compare.lock"):
+        folder.mkdir(parents=True, exist_ok=True)
+        paths = []
+        for item in record["files"]:
+            path = Path(item["path"])
+            target = folder / path.name
+            copy2(path, target)
+            if path.name != "identity.json":
+                paths.append(target)
+        render_comparison(left, right, folder, a, b, paired, paths, viz, display_config, reference)
+    return folder
+
+
+def render_comparison(left, right, folder, a, b, paired, paths, viz, display_config, reference):
+    from srcs.visualization.series_overlays import prepare_and_render
+    first_label, second_label = a["scope"]["series"], b["scope"]["series"]
+    if first_label == second_label:
+        first_label += "/" + a["scope"]["branch"]
+        second_label += "/" + b["scope"]["branch"]
+    prepare_and_render(left, right, folder, first_label, second_label, viz=viz, config=display_config)
+    for name in ("longitudinal_dispersion", "longitudinal_subjects", "longitudinal_phase_dispersion", "longitudinal_phase_subjects", "descriptive_regional"):
+        optional = folder/(name+".csv")
+        if optional.is_file():
+            paths.append(optional)
+    publish(folder/"index.json", "comparison", "comparison", paths+[folder/"identity.json"])
+    from srcs.visualization.comparison import render
+    render(folder,first_label,second_label,paired,viz=viz,reference_week=reference)
+
+
+def calculate_comparison(folder, x, y, left, right, a, b, paired, positions, seed, repeats, candidate_limit, payload):
+    keys = ["atlas", "cohort", "week", "run", "mouse"]
     groups=["atlas","cohort","week","run"]
     common_n=pd.concat([x.groupby(groups).mouse.nunique(),y.groupby(groups).mouse.nunique()],
                        axis=1,join="inner").min(axis=1)
@@ -88,7 +176,7 @@ def compare(first,second,output_root=None,seed=42,repeats=200):
             if len(own)!=1:
                 raise ValueError(f"Missing or duplicated self reference: {key}")
             others=np.flatnonzero(part.other.to_numpy()!=key[-1])
-            count=min(9,int(common_n[key[:4]])-1,len(others))
+            count=min(candidate_limit,int(common_n[key[:4]])-1,len(others))
             subsampler=np.random.default_rng(int(digest([seed,*key])[:16],16))
             selected=subsampler.choice(others,count,replace=False)
             result=score(part.distance.to_numpy(),own[0],selected)
@@ -98,10 +186,6 @@ def compare(first,second,output_root=None,seed=42,repeats=200):
             updated=pd.DataFrame(scores).groupby(keys).agg({"q":"mean","margin":"mean"})
             aligned=updated.reindex(pd.MultiIndex.from_frame(frame[keys]))
             frame[["q","margin"]]=aligned[["q","margin"]].to_numpy()
-    payload=dict(schema="compare_identity",a=digest(a),b=digest(b),inputs=[ha,hb],mode="paired" if paired else "independent",
-                 mice={"first":a["scope"]["mice"],"second":b["scope"]["mice"]},
-                 code=digest(code_closure(PROJECT_ROOT,"srcs.workflow.compare")),seed=seed,repeats=repeats)
-    folder=(Path(output_root) if output_root else left.parent)/"_compare"/(left.name+"__vs__"+right.name+"_"+digest(payload)[:8])/"results/compare/"
     rng=np.random.default_rng(seed)
     ids_a=np.array(sorted(a["scope"]["mice"]))
     ids_b=np.array(sorted(b["scope"]["mice"]))
@@ -141,7 +225,7 @@ def compare(first,second,output_root=None,seed=42,repeats=200):
             trajectories.setdefault((key[0],key[1],key[3],name),[]).append((key[2],values[:,j]))
         margin_low,margin_high=intervals(values[1:,3])
         rows["q_gap"][-1].update(margin_gap=values[0,3],margin_low=margin_low,margin_high=margin_high,
-                                 n_foreign=min(9,int(common_n[key])-1))
+                                 n_foreign=min(candidate_limit,int(common_n[key])-1))
         trajectories.setdefault((key[0],key[1],key[3],"margin_gap"),[]).append((key[2],values[:,3]))
     for key,items in trajectories.items():
         labels,values=zip(*items)
@@ -184,17 +268,4 @@ def compare(first,second,output_root=None,seed=42,repeats=200):
         save_table(path,pd.DataFrame(table),index=False)
         paths.append(path)
     write_json(folder/"identity.json",payload)
-    from srcs.visualization.series_overlays import prepare_and_render
-    first_label, second_label = a["scope"]["series"], b["scope"]["series"]
-    if first_label == second_label:
-        first_label += "/" + a["scope"]["branch"]
-        second_label += "/" + b["scope"]["branch"]
-    prepare_and_render(left, right, folder, first_label, second_label)
-    for name in ("longitudinal_dispersion", "longitudinal_subjects", "longitudinal_phase_dispersion", "longitudinal_phase_subjects", "descriptive_regional"):
-        optional = folder/(name+".csv")
-        if optional.is_file():
-            paths.append(optional)
-    publish(folder/"index.json", "comparison", "comparison", paths+[folder/"identity.json"])
-    from srcs.visualization.comparison import render
-    render(folder,first_label,second_label,paired)
-    return folder
+    return paths

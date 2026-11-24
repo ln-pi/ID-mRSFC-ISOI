@@ -63,7 +63,7 @@ python run.py -c configs/Nseries.yaml --stage report --report-section combined
 python run.py -c configs/Nseries.yaml --stage report --report-section statistics
 ```
 
-`report` 默认绘制所有已有数值结果；`--report-section` 可选 `geometry/pairwise/descriptive/stability/longitudinal/combined/statistics/all`。combined 和 statistics 阶段不再直接绘图，统计数值统一写入 `results/statistics/`，原 `report/tables/` 中初版遗留文件不作为新流程输入。独立重绘无需原始 FC 表和 edge cache，也不会改写 `results/`。FC 阶段仍可生成采集诊断图，生成逻辑位于 visualization，不在 FC 计算核心中。
+`report` 默认绘制所有已有数值结果；`--report-section` 可选 `geometry/pairwise/descriptive/stability/longitudinal/combined/statistics/all`。combined 和 statistics 阶段不再直接绘图，统计数值统一写入 `results/statistics/`，原 `report/tables/` 中初版遗留文件不作为新流程输入。独立重绘从保存的结果读取。阶段相似性展示窗口改变阶段成员时，还会读取经校验的 edge store。FC 阶段仍可生成采集诊断图，生成逻辑位于 visualization，不在 FC 计算核心中。
 
 幅度与拓扑分析：
 
@@ -74,6 +74,24 @@ python run.py --stage report --report-section descriptive
 ```
 
 默认对每个 Run 及所有 Run 的 Fisher-z FC 均值分别计算欧式/RMS/1−r 距离、LOO ΔFC、群体离散度、逐边样本方差及 ROI/网络方向和贡献。`results/descriptive/` 保存两套队列的全部数值、选择规则和描述性离群示例；`report/descriptive/` 保存 PNG/PDF 和索引。参数和公式见 [配置与数据契约](config.md)。
+
+## SeedFC 批次补充报告
+
+```powershell
+conda activate ID-mRSFC-ISOI
+python run.py --configs configs/SeedFC_Aseries_noGSR.yaml configs/SeedFC_Nseries_noGSR.yaml --start seedfc
+```
+
+所有输入均启用 SeedFC 和 `seedfc_supplement.enabled` 时，完整报告批次在主流程和适用的 compare 完成后，按 atlas 生成补充报告。单系列完整批次也适用。 `--dry-run` 在 `batch_summary.json` 记录补充步骤和输入目录。单阶段和局部报告只执行指定工作。补充失败时，汇总记录失败原因和已生成的产物，可用如下入口从原先输出重试。
+
+```powershell
+python plugins/seedfc/supplement.py --outputs "<A输出目录>" "<N输出目录>" --atlas FourNetworks --config configs/SeedFC_Aseries_noGSR.yaml
+python plugins/seedfc/supplement.py --outputs "<A输出目录>" "<N输出目录>" --atlas FourNetworks --config configs/SeedFC_Aseries_noGSR.yaml --redraw
+python run.py --from "<已有输出目录>" --stage report --report-section longitudinal --visualization-config "<绘图配置.yaml>"
+python run.py --compare "<A输出目录>" "<N输出目录>" --visualization-config "<绘图配置.yaml>"
+```
+
+补充分析的默认位置为输出根目录的 `_supplement/numeric/` 和 `_supplement/reports/`。手动补算可用 `--destination` 指定其他根目录。数值清单核验输入 edge store、数值选项及产品散列。修改颜色、DPI 或展示起点后，`--redraw` 要求命中这份已核验的数值缓存，并生成独立的报告。 `--from` 将主流程重绘图写入 `reports/redraw/`。主流程已有报告时，不同选项或输入的新图写入 `rendered_reports/`。跨系列 compare 以各自的数值摘要和绘图摘要定位结果。
 
 ## 显式导入已有 FC
 

@@ -38,10 +38,12 @@ def active_source(config, root):
 def source_code(spec,root):
     folder = root/"plugins"/spec["id"]
     listed = sorted(p.relative_to(folder).as_posix() for p in folder.rglob("*.py"))
-    if sorted(spec["numerics"]) != listed:
-        raise ValueError("Source numerics must cover all Python files")
+    numerical = spec["numerics"]
+    postprocessors = spec.get("postprocessors", [])
+    if sorted(numerical + postprocessors) != listed:
+        raise ValueError("Source numerics and postprocessors must cover each Python file once")
     closure={}
-    for filename in listed:
+    for filename in sorted(numerical):
         parts=list(Path(filename).with_suffix("").parts)
         if parts[-1]=="__init__":
             parts.pop()
@@ -49,4 +51,5 @@ def source_code(spec,root):
         closure.update(code_closure(root,module))
     for module in spec.get("kernel",[]):
         closure.update(code_closure(root,module))
-    return digest([spec,closure])
+    source_spec = {key: value for key, value in spec.items() if key != "postprocessors"}
+    return digest([source_spec, closure])

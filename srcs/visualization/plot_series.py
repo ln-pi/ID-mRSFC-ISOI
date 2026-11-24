@@ -28,6 +28,8 @@ class PlotTask:
     fmt: str | None = None
 
 
+from srcs.utils.visualization import color_policy, settings
+
 def roi_tick_config(names, fontsize_small=10, fontsize_scale=300):
     labels = [n.split("-", 1)[1] if "-" in n else n for n in names]
     fontsize = fontsize_scale / len(names) if len(names) >= 30 else fontsize_small
@@ -50,16 +52,14 @@ def roi_tick_config(names, fontsize_small=10, fontsize_scale=300):
 
 def fc_heatmap_config(names, **overrides):
     overrides = dict(overrides)
-    fontsize_small = overrides.pop("label_fontsize_small", 10)
-    fontsize_scale = overrides.pop("label_fontsize_scale", 300)
-    config = {
-        "center": 0,
-        "vmin": -1,
-        "vmax": 1,
-        "square": True,
-        "cmap": "coolwarm",
-        "cbar": True,
-    }
+    viz = settings()
+    style = viz["fc_heatmap"]
+    fontsize_small = overrides.pop("label_fontsize_small", style["label_fontsize_small"])
+    fontsize_scale = overrides.pop("label_fontsize_scale", style["label_fontsize_scale"])
+    role, policy = color_policy(viz, "fc_heatmap")
+    config = {"square": style["square"], "cbar": style["cbar"], "cmap": viz["colormaps"][role]}
+    if policy["mode"] == "fixed":
+        config["vmin"], config["vmax"] = policy["limits"]
     config.update(roi_tick_config(names, fontsize_small=fontsize_small, fontsize_scale=fontsize_scale))
     config.update(overrides)
     return config
@@ -395,7 +395,7 @@ class PlotSeries:
         plt.imsave(
             path,
             data,
-            cmap=cfg.get("cmap", "gray"),
+            cmap=cfg.get("cmap") or settings()["colormaps"]["sequential"],
             vmin=cfg.get("vmin", None),
             vmax=cfg.get("vmax", None)
         )
@@ -405,14 +405,14 @@ class PlotSeries:
     def _plot_origin(self, ax, data, cfg):
         im = ax.imshow(
             data,
-            cmap=cfg.get("cmap", "gray"),
+            cmap=cfg.get("cmap") or settings()["colormaps"]["sequential"],
             vmin=cfg.get("vmin", None),
             vmax=cfg.get("vmax", None),
             origin=cfg.get("origin", "upper"),
             interpolation=cfg.get("interpolation", "nearest")
         )
         if cfg.get("cbar", False):
-            plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+            plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04, extend=cfg.get("cbar_extend", "neither"))
         
         xticks_cfg = cfg.get("xticks")
         yticks_cfg = cfg.get("yticks")
@@ -478,8 +478,9 @@ class PlotSeries:
             vmin=cfg.get("vmin"),
             vmax=cfg.get("vmax"),
             square=cfg.get("square", False),
-            cmap=cfg.get("cmap", "gray"),
+            cmap=cfg.get("cmap") or settings()["colormaps"]["sequential"],
             cbar=cfg.get("cbar", True),
+            cbar_kws={"extend": cfg.get("cbar_extend", "neither")},
             xticklabels=False,
             yticklabels=False,
         )

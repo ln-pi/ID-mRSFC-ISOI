@@ -119,14 +119,14 @@ def merge_tiffs(input_dir, merged_path):
     return merged_video
 
 
-def Affine_Atlas(processed_path, mouse, trial):
+def Affine_Atlas(processed_path, mouse, trial, visualization=None):
     tiff_path = os.path.join(processed_path, f"{mouse}_{trial}_merged.tif")
     with tifffile.TiffFile(tiff_path) as tif:
         video_data = tif.asarray()
     tiff_data = video_data
 
     avr = tiff_data.mean(axis=0)
-    MP = Match_Pattern(avr, bin=4, lbd=4.2)
+    MP = Match_Pattern(avr, bin=4, lbd=4.2, visualization=visualization)
     MP.Select_Anchor()
     MP.Fit_Align_Matrix()
 

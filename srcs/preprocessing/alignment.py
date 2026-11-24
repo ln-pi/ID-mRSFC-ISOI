@@ -14,6 +14,8 @@ from tqdm import tqdm
 
 from srcs.atlas.Atlas_Mask import Mask_Generator
 from srcs.utils.logger import setup_logger
+from srcs.utils.visualization import settings
+from srcs.visualization.scales import resolve
 
 
 logger = setup_logger()
@@ -28,7 +30,8 @@ class Match_Pattern(Mask_Generator):
 
     name = "Align Stack to Pattern"
 
-    def __init__(self, avr, bin=4, lbd=4.2):
+    def __init__(self, avr, bin=4, lbd=4.2, visualization=None):
+        self.visualization = settings() if visualization is None else visualization
         super().__init__(bin)
 
         self.height, self.width = self.idmap.shape
@@ -51,7 +54,8 @@ class Match_Pattern(Mask_Generator):
             confirmed = False
 
             fig, ax = plt.subplots(figsize=(6, 6))
-            ax.imshow(self.avr, cmap="gray")
+            scale = resolve(self.avr, self.visualization, "alignment_intensity", bounds=(0, 255))
+            ax.imshow(self.avr, **scale.image)
             ax.set_title(
                 "Left click: select | Backspace/u: undo | Enter: confirm | Esc: retry",
                 fontsize=10
@@ -183,8 +187,10 @@ class Match_Pattern(Mask_Generator):
             plt.close(self.preview_fig)
         
         self.preview_fig, ax = plt.subplots(figsize=(6, 6))
-        ax.imshow(show_img, cmap="gray")
-        ax.imshow(self.idmap_sym, alpha=0.15, cmap="jet")
+        scale = resolve(show_img, self.visualization, "alignment_intensity", bounds=(0, 255))
+        ax.imshow(show_img, **scale.image)
+        ax.imshow(self.idmap_sym, alpha=self.visualization["alignment"]["overlay_alpha"],
+                  cmap=self.visualization["alignment"]["atlas_palette"])
         ax.set_title("Alignment preview")
         ax.axis("off")
         plt.show(block=False)

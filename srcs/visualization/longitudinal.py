@@ -9,6 +9,8 @@ from srcs.analysis.longitudinal import SCHEMA
 from srcs.workflow.products import verified_index
 from srcs.utils.provenance import sha256
 from srcs.utils.storage import save_json
+from srcs.utils.visualization import displayed_weeks, filter_cohorts
+from srcs.visualization.series_overlays import rebuild_phase_frames
 
 
 def run(ctx):
@@ -22,6 +24,10 @@ def run(ctx):
     models = pd.read_csv(source.parent/"random_slopes.csv")
     slopes = pd.read_csv(source.parent/"mouse_slopes.csv")
     diagnostics = pd.read_csv(source.parent/"model_diagnostics.csv")
+    viz = ctx.viz()
+    weeks = displayed_weeks(dispersion.week.unique(), viz, ctx.section("descriptive").get("reference_week"))
+    dispersion = filter_cohorts(dispersion[dispersion.week.isin(weeks)], viz)
+    subjects = filter_cohorts(subjects[subjects.week.isin(weeks)], viz)
     written = []
     def save(fig, name):
         for suffix in ("png", "pdf"):
@@ -32,6 +38,14 @@ def run(ctx):
     if phase_path.is_file():
         phase_data = pd.read_csv(phase_path)
         phase_subjects = pd.read_csv(source.parent / "phase_subjects.csv")
+        if "phase" in phase_data and viz["time_start"] == "baseline":
+            frames = dict(longitudinal_dispersion=dispersion, longitudinal_subjects=subjects,
+                          longitudinal_phase_dispersion=phase_data)
+            rebuild_phase_frames(frames, ctx.section("pairwise"))
+            phase_data = frames["longitudinal_phase_dispersion"]
+            phase_subjects = frames["longitudinal_phase_subjects"]
+        phase_data = filter_cohorts(phase_data, viz)
+        phase_subjects = filter_cohorts(phase_subjects, viz)
         if "phase" in phase_data and len(phase_data):
             for (atlas, view), part in phase_data.groupby(["atlas", "view"], sort=False):
                 phases = list(dict.fromkeys(part.phase))
@@ -59,19 +73,20 @@ def run(ctx):
             axes[0].fill_between(part.time.to_numpy(), part.ci_low.to_numpy(), part.ci_high.to_numpy(), alpha=.15)
             axes[1].plot(part.time, part.n_mice, "-o", ms=3, label=cohort)
             axes[3].plot(part.time, part.group_mean_fc, "-o", ms=3, label=cohort)
-        sub = subjects[(subjects.atlas == atlas) & (subjects.view == view) & (subjects.cohort == "fixed_window")]
+        preferred = (viz.get("display_cohorts") or ["fixed_window"])[0]
+        sub = subjects[(subjects.atlas == atlas) & (subjects.view == view) & (subjects.cohort == preferred)]
         for mouse, part in sub.groupby("mouse", sort=False):
             if not np.isfinite(part.deviation_rms).any():
                 continue
             axes[2].plot(part.time, part.deviation_rms, "-o", ms=2, label=mouse)
-        for ax, title in zip(axes, ("Dispersion + animal-block 95% intervals", "Valid mice", "Individual LOO RMS | fixed window", "Group mean FC")):
+        for ax, title in zip(axes, ("Dispersion + animal-block 95% intervals", "Valid mice", f"Individual LOO RMS | {preferred}", "Group mean FC")):
             ax.set_title(title, fontsize=10)
             ax.set_xticks(data.time.unique(), weeks, rotation=90)
             ax.legend(fontsize=6)
         axes[0].set_ylabel("Fisher-z squared")
         axes[2].set_ylabel("RMS Fisher-z FC")
         axes[3].set_ylabel("Mean Fisher-z FC across edges")
-        fig.suptitle(f"{atlas} | {view} | trajectories; fixed and available cohorts kept separate")
+        fig.suptitle(f"{atlas} | {view} | trajectories; cohorts plotted separately")
         save(fig, f"trajectories_{atlas}_{view}")
     for atlas, data in models.groupby("atlas", sort=False):
         fig, axes = plt.subplots(1, 3, figsize=(17, 6), constrained_layout=True)

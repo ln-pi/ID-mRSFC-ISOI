@@ -30,6 +30,7 @@ def main(argv=None):
     parser.add_argument('--import-fc', metavar='SOURCE_OUTPUT', help='Explicit source output/correlation directory; requires -c and edges stage')
     parser.add_argument('--from', dest='saved_output', metavar='DIRECTORY')
     parser.add_argument('--compare', nargs=2, metavar=('FIRST','SECOND'))
+    parser.add_argument('--visualization-config', help='Override visualization settings for a saved report or comparison')
     parser.add_argument('--report-section', choices=('all', 'geometry', 'pairwise', 'descriptive', 'stability', 'longitudinal', 'combined', 'statistics'), default='all',
                         help='Saved-result section to redraw during report (default: all available)')
     parser.add_argument('--report-root', default='reports/automatic', help='Batch plan/status directory')
@@ -40,13 +41,21 @@ def main(argv=None):
             parser.error('--compare is a standalone operation')
         from srcs.workflow.compare import compare
         roots = [ROOT / name if (ROOT / name).is_dir() else ROOT / "data/output" / name for name in args.compare]
-        print(compare(*roots))
+        options = {}
+        if args.visualization_config:
+            from srcs.utils.config import load_config
+            from srcs.utils.visualization import merge, saved_config
+            override = load_config(ROOT / args.visualization_config)
+            options["configs"] = [merge(saved_config(root), {"visualization": override.get("visualization", override)}) for root in roots]
+        print(compare(*roots, **options))
         return 0
     if args.saved_output:
         if args.stage != 'report' or args.config or args.configs or args.import_fc or args.tag:
             parser.error('--from accepts only saved-result report execution')
         from srcs.workflow.report import redraw_saved
-        return redraw_saved((ROOT / args.saved_output).resolve(), args.report_section, args.dry_run)
+        return redraw_saved((ROOT / args.saved_output).resolve(), args.report_section, args.dry_run, args.visualization_config)
+    if args.visualization_config:
+        parser.error('--visualization-config requires --from or --compare')
     start = args.stage or args.start or 'fc'
     if args.import_fc and (not args.config or start != 'edges'):
         parser.error('--import-fc requires -c and --start/--stage edges')

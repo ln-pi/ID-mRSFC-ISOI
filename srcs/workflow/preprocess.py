@@ -59,7 +59,7 @@ def process_recording(ctx, week, mouse, run):
     # --- Step 4: Affine atlas registration ---
     atlas_root = Path(__file__).resolve().parents[1] / "atlas"
     runner.run("step4_affine",
-        lambda: Affine_Atlas(processed_path=folder, mouse=mouse, trial=run),
+        lambda: Affine_Atlas(processed_path=folder, mouse=mouse, trial=run, visualization=ctx.viz()),
         [affine_path, preview_path],
         lambda: check_alignment(affine_path, preview_path, (tiff_shape(merged_path)[0], *spatial_shape)),
         dependencies=[merged_path, *[atlas_root / name for name in

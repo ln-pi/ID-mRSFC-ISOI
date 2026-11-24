@@ -1,7 +1,8 @@
-id: seedfc
-kind: source
-requires: []
-produces: []  # This source writes the native weekly tables in place of fc.
-before: [edges]
-numerics: [__init__.py]
-kernel: []
+id: seedfc                                                   #	Registered input source identifier.
+kind: source                                                 #	Plugin role in the workflow.
+requires: []                                                 #	Products required before the input adapter runs.
+produces: []                                                 #	The adapter writes native weekly FC tables in place of fc.
+before: [edges]                                              #	Schedule the input adapter before edge extraction.
+numerics: [__init__.py]                                      #	Code that affects imported FC data identity.
+postprocessors: [supplement.py]                              #	Batch tasks with their own output identity.
+kernel: []                                                   #	Additional numerical modules included in the source identity.

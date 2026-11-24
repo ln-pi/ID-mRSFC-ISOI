@@ -1,38 +1,40 @@
 """Standalone saved-SeedFC supplement: variability, matching and paired-week ICC.
 
 python plugins/seedfc/supplement.py --outputs A_OUTPUT N_OUTPUT
-Optional YAML: `seedfc_supplement` mapping; see DEFAULTS for supported settings.
-Writes a new folder exclusively; never edits inputs or joins the main stage cache.
+Optional YAML overrides analysis and visualization settings.
+Verified numerical results and reports are cached separately.
 """
 from __future__ import annotations
 
 import argparse
 import base64
-from datetime import datetime, timezone
-import hashlib
 import html
-from itertools import combinations_with_replacement
 import json
 from pathlib import Path
+from tempfile import mkdtemp
+from types import SimpleNamespace
+import inspect
+import sys
+
+# Direct script execution must find the same project modules as the batch runner.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import yaml
 
 
-DEFAULTS = dict(reference='03w', cohorts=['fixed_window', 'available_pair'],
-    cv_mean_threshold=1e-6, numerical_tolerance=1e-12, icc_min_mice=3,
-    dpi=150, formats=['png', 'pdf'], cmap='viridis', signed_cmap='coolwarm',
-    missing_color='lightgray', series_colors=['#356caa', '#bd502f'],
-    view_markers=['o', '^', 's'], panel_size=[5.2, 3.8], font_size=9,
-    matrix_weeks=['03w', '07w', '13w'])
-
-
-def sha(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+from srcs.analysis.magnitude import select_views
+from srcs.analysis.topology import edge_layout
+from srcs.core.artifacts import sha256 as sha, write_json
+from srcs.core.identity import digest
+from srcs.core.runtime import exclusive_run
+from srcs.utils.config import PROJECT_ROOT, load_config
+from srcs.utils.visualization import displayed_weeks, merge, saved_config, settings, validate
+from srcs.visualization.scales import resolve
 
 
 def clean(value):
@@ -105,51 +107,49 @@ def matching(s):
         query_ties=int(row_tie.sum()),reverse_ties=int(col_tie.sum()))
 
 
-def load_output(root, atlas):
+def load_output(root, atlas, config=None):
     root = Path(root).resolve(); path=root/'results/edges'/f'{atlas}.npz'
     marker=path.with_suffix('.json'); info=json.loads(marker.read_text(encoding='utf-8'))
     if sha(path)!=info['sha256']: raise ValueError(f'Changed edge store: {path}')
     with np.load(path,allow_pickle=False) as z:
         meta=json.loads(str(z['metadata']))
         a={k:z[k].copy() for k in ('F_z','F_r','valid_record','edge_index')}
-    cfg_path=root/'metadata/analysis_config.json'
-    cfg=json.loads(cfg_path.read_text(encoding='utf-8'))['config']
+    cfg = saved_config(root) if config is None else config
     identity=root/'metadata/data_identity.json'
     scope=json.loads(identity.read_text(encoding='utf-8'))['scope']
     if scope['source']['id']!='seedfc': raise ValueError('SeedFC outputs required')
-    mapping=cfg['descriptive']['network_mapping']; labels=meta['roi_labels']
-    if not set(labels)<=set(mapping): raise ValueError('Explicit ROI network mapping required')
+    descriptive = cfg.get("descriptive", {})
+    labels = meta["roi_labels"]
     n,w,r,e=a['F_z'].shape
     if (n,w,r)!=(len(meta['mouse_ids']),len(meta['week_ids']),len(meta['run_ids'])):
         raise ValueError('Saved axes differ')
     if not np.array_equal(a['edge_index'],np.array(np.triu_indices(len(labels),1))):
         raise ValueError('Unexpected edge order')
     if not np.isfinite(a['F_z'][a['valid_record']]).all(): raise ValueError('Nonfinite valid FC')
-    views=list(meta['run_ids'])+['mean_fc']
-    values=np.concatenate([a['F_z'],a['F_z'].mean(2,keepdims=True)],axis=2)
-    valid=np.concatenate([a['valid_record'],a['valid_record'].all(2,keepdims=True)],axis=2)
+    store = SimpleNamespace(weeks=meta["week_ids"], runs=meta["run_ids"],
+                            F_z=a["F_z"], valid_record=a["valid_record"])
+    weeks, views, values, valid, _ = select_views(store, descriptive)
+    meta["week_ids"] = weeks
     # Fixed cohort is joint across all configured weeks and Runs, shared by every comparison.
     pattern_valid=valid & (np.ptp(values,axis=-1)>0) & np.isfinite(values).all(-1)
     fixed=pattern_valid.all((1,2))
-    groups=[('whole','All',np.arange(e))]
-    for roi in mapping:
-        if roi in labels:
-            j=labels.index(roi); groups.append(('roi',roi,np.flatnonzero((a['edge_index']==j).any(0))))
-    networks=list(dict.fromkeys(mapping[x] for x in mapping if x in labels))
-    for first,second in combinations_with_replacement(networks,2):
-        ids=[k for k,(i,j) in enumerate(a['edge_index'].T)
-             if {mapping[labels[i]],mapping[labels[j]]}=={first,second}]
-        if ids: groups.append(('network_pair',f'{first} | {second}',np.array(ids)))
+    layout, _, topology = edge_layout(labels, a["edge_index"], descriptive.get("network_mapping"))
+    groups = [("whole", "All", np.arange(e))]
+    groups.extend((group["level"], group["name"], group["indices"]) for group in layout
+                  if group["level"] in ("roi", "network_pair"))
     return dict(root=root,meta=meta,values=values,valid=valid,pattern_valid=pattern_valid,
-        fixed=fixed,views=views,groups=groups,edges=a['edge_index'],mapping=mapping,
-        series=scope['series'],inputs={str(p):sha(p) for p in (path,marker,cfg_path,identity)})
+        fixed=fixed,views=views,groups=groups,edges=a['edge_index'],mapping=topology["roi_network_mapping"],
+        series=scope['series'], inputs={str(p):sha(p) for p in (path, marker, identity)})
 
 
 def compute(source, cfg, tables, arrays, audit):
     meta=source['meta']; weeks=meta['week_ids']; mice=np.array(meta['mouse_ids'])
     ref=weeks.index(cfg['reference']); views=source['views']; x=source['values']
     base_series=source['series']; labels=meta['roi_labels']; edges=source['edges']
-    comparisons=[(q,r) for q in range(len(views)-1) for r in range(len(views)-1)]+[(len(views)-1,)*2]
+    run_indices = [i for i, view in enumerate(views) if view in meta["run_ids"]]
+    comparisons = [(q, r) for q in run_indices for r in run_indices]
+    if "mean_fc" in views:
+        comparisons.append((views.index("mean_fc"),) * 2)
     for cohort in cfg['cohorts']:
         for w,week in enumerate(weeks):
             for v,view in enumerate(views):
@@ -218,9 +218,13 @@ def compute(source, cfg, tables, arrays, audit):
                     tables['icc_regions'].append(row)
 
 
-def render(sources, cfg, tables, arrays, out):
-    plt.rcParams.update({'font.size':cfg['font_size']})
-    weeks=sources[0]['meta']['week_ids']; series=[s['series'] for s in sources]
+def render(sources, cfg, tables, arrays, out, viz):
+    weeks = displayed_weeks(sources[0]['meta']['week_ids'], viz, cfg['reference'])
+    series = [s['series'] for s in sources]
+    scales = []
+    tables = {k: v[v.week.isin(weeks)] if 'week' in v else v for k, v in tables.items()}
+    cfg = {**cfg, **viz['supplement'], 'series_colors': viz['series_colors'], 'view_markers': viz['view_markers']}
+    plt.rcParams.update({'font.size': cfg['font_size']})
     views=sources[0]['views']; files=[]; plots=out/'figures'; plots.mkdir()
     def save(fig,name):
         for ext in cfg['formats']:
@@ -228,28 +232,34 @@ def render(sources, cfg, tables, arrays, out):
             if ext=='png': files.append(path)
         plt.close(fig)
     def heat(frame,metric,name,cohort,comparison=None):
+        if frame.empty:
+            return
         for level in ('network_pair','roi'):
             subset=frame[(frame.cohort==cohort)&(frame.level==level)]
             if comparison: subset=subset[subset.comparison==comparison]
             panels=list(subset.groupby(['series'] if comparison else ['series','view'],sort=False))
             if not panels: continue
-            signed=metric!='mean_sd'; values=subset[metric].to_numpy(); finite=values[np.isfinite(values)]
-            limit=max(float(np.max(np.abs(finite))) if len(finite) else 1.,cfg['numerical_tolerance'])
-            if metric.startswith('icc'): limit=1.
+            policy = {'mean_sd': 'sd', 'median_cv': 'cv'}.get(metric, 'icc')
+            scale = resolve(subset[metric], viz, policy, anchor_zero=policy in ('sd', 'cv'))
+            if scale is None:
+                continue
+            scales.append(scale.record(metric=metric, level=level, cohort=cohort, comparison=comparison,
+                                       weeks=weeks, series=series, views=views))
             fig,axes=plt.subplots(len(panels),1,squeeze=False,
                 figsize=(cfg['panel_size'][0]*2,cfg['panel_size'][1]*len(panels)))
             for ax,(key,part) in zip(axes.flat,panels):
                 regions=list(dict.fromkeys(part.region))
                 mat=part.pivot(index='region',columns='week',values=metric).reindex(index=regions,columns=weeks)
-                cm=plt.get_cmap(cfg['signed_cmap'] if signed else cfg['cmap']).with_extremes(bad=cfg['missing_color'])
-                im=ax.imshow(mat,aspect='auto',cmap=cm,vmin=-limit if signed else 0,vmax=limit)
+                im = ax.imshow(mat, aspect='auto', **scale.image)
                 ax.set_xticks(range(len(weeks)),weeks,rotation=90); ax.set_yticks(range(len(regions)),regions)
                 ax.set_title(f'{key} | {cohort} | {metric}'+(' | exploratory signed CV' if metric=='median_cv' else ''))
-                fig.colorbar(im,ax=ax,extend='both' if metric.startswith('icc') else 'neither')
+                fig.colorbar(im,ax=ax,extend=scale.extend)
             fig.tight_layout();save(fig,f'{name}_{level}_{cohort}')
     for cohort in cfg['cohorts']:
         heat(tables['weekly_regions'],'mean_sd','SD',cohort)
         heat(tables['weekly_regions'],'median_cv','CV_diagnostic',cohort)
+        if tables['within_summary'].empty:
+            continue
         fig,axes=plt.subplots(1,len(views),squeeze=False,figsize=(cfg['panel_size'][0]*len(views),cfg['panel_size'][1]))
         for ax,view in zip(axes.flat,views):
             for k,label in enumerate(series):
@@ -257,7 +267,7 @@ def render(sources, cfg, tables, arrays, out):
                 ax.plot(weeks,d.mean_similarity,marker=cfg['view_markers'][k%len(cfg['view_markers'])],color=cfg['series_colors'][k%len(cfg['series_colors'])],label=label)
             ax.set_title(view);ax.tick_params(axis='x',rotation=90);ax.set_ylabel('Mean nonself pattern Pearson r');ax.legend()
         fig.suptitle(cohort);fig.tight_layout();save(fig,'within_similarity_'+cohort)
-        for comparison in tables['fingerprint'].comparison.unique():
+        for comparison in tables['fingerprint'].get('comparison', pd.Series(dtype=str)).unique():
             fig,axes=plt.subplots(2,2,figsize=(cfg['panel_size'][0]*2,cfg['panel_size'][1]*2))
             for k,label in enumerate(series):
                 d=tables['fingerprint'];d=d[(d.series==label)&(d.cohort==cohort)&(d.comparison==comparison)].set_index('week').reindex(weeks)
@@ -291,55 +301,126 @@ def render(sources, cfg, tables, arrays, out):
             chosen=[]
             for source in sources:
                 for week in cfg['matrix_weeks']:
+                    if week not in weeks:
+                        continue
                     suffix=views[0]+'_within' if mode=='within' else views[0]+'__to__'+views[0]
                     key=f'{source["series"]}_{cohort}_{week}_{suffix}'
-                    if key in arrays: chosen.append((key,source['series'],week))
+                    if key in arrays and (mode != 'within' or len(arrays[key]) > 1):
+                        chosen.append((key, source['series'], week))
             if chosen:
+                metric = mode + "_similarity"
+                population = np.concatenate([arrays[key].ravel() for key, _, _ in chosen])
+                scale = resolve(population, viz, metric, bounds=(-1, 1))
+                if scale is None:
+                    continue
+                scales.append(scale.record(metric=metric, cohort=cohort, weeks=list(dict.fromkeys(w for _, _, w in chosen)),
+                                           series=series, view=views[0]))
                 fig,axes=plt.subplots(1,len(chosen),squeeze=False,figsize=(cfg['panel_size'][0]*len(chosen),cfg['panel_size'][1]))
                 for ax,(key,label,week) in zip(axes.flat,chosen):
-                    im=ax.imshow(arrays[key],vmin=-1,vmax=1,cmap=cfg['signed_cmap'])
+                    im = ax.imshow(arrays[key], **scale.image)
                     mice=arrays[key+'_mice'];ax.set_xticks(range(len(mice)),mice,rotation=90);ax.set_yticks(range(len(mice)),mice)
-                    ax.set_title(f'{label} {week} | {mode} | {views[0]}');fig.colorbar(im,ax=ax)
+                    ax.set_title(f'{label} {week} | {mode} | {views[0]}');fig.colorbar(im,ax=ax,extend=scale.extend)
                 fig.tight_layout();save(fig,'matrices_'+mode+'_'+cohort)
+    json_write(out / 'color_scales.json', scales)
     return files
 
 
-def run(args):
-    cfg=dict(DEFAULTS)
-    if args.config:
-        loaded=yaml.safe_load(Path(args.config).read_text(encoding='utf-8'))
-        override=loaded.get('seedfc_supplement',{})
-        unknown=set(override)-set(cfg)
-        if unknown: raise ValueError(f'Unknown supplemental settings: {unknown}')
-        cfg.update(override)
-    if args.reference: cfg['reference']=args.reference
-    if not cfg['cohorts'] or not set(cfg['cohorts'])<={'fixed_window','available_pair'}: raise ValueError('Unknown cohort')
-    if cfg['cv_mean_threshold']<0 or cfg['numerical_tolerance']<=0 or cfg['icc_min_mice']<3: raise ValueError('Invalid numerical settings')
-    if 'png' not in cfg['formats'] or not set(cfg['formats'])<={'png','pdf'}: raise ValueError('Formats must include png and optionally pdf')
-    sources=[load_output(p,args.atlas) for p in args.outputs]
-    if len({s['series'] for s in sources})!=len(sources): raise ValueError('Distinct series labels required')
-    for s in sources:
-        if s['meta']['roi_labels']!=sources[0]['meta']['roi_labels'] or s['meta']['week_ids']!=sources[0]['meta']['week_ids'] or s['views']!=sources[0]['views'] or s['mapping']!=sources[0]['mapping']:
-            raise ValueError('Incompatible ordered ROIs, weeks, Runs or networks')
-        if cfg['reference'] not in s['meta']['week_ids']: raise ValueError('Reference week absent')
-    stamp=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
-    out=Path(args.destination or Path(__file__).resolve().parents[2]/'data/output/_supplement')/('SeedFC_AN_'+cfg['reference']+'_'+stamp)
-    out.mkdir(parents=True,exist_ok=False)
-    tables={name:[] for name in ('weekly_edges','weekly_regions','within_summary','within_pairs','fingerprint','self_similarity','icc_edges','icc_regions')}
-    arrays={};audit=[]
-    for s in sources:
-        print('Computing',s['series'],'fixed mice',np.array(s['meta']['mouse_ids'])[s['fixed']].tolist(),flush=True)
-        compute(s,cfg,tables,arrays,audit)
-    numeric=out/'numeric';numeric.mkdir()
-    tables={k:pd.DataFrame(v) for k,v in tables.items()}
-    for name,table in tables.items(): table.to_csv(numeric/(name+'.csv'),index=False)
-    np.savez_compressed(numeric/'matrices.npz',**arrays)
-    json_write(numeric/'cohorts.json',audit)
-    json_write(out/'effective_config.json',cfg)
-    print('Rendering saved metrics',flush=True)
-    files=render(sources,cfg,tables,arrays,out)
-    overview=tables['fingerprint']; overview=overview[(overview.cohort=='fixed_window')&(overview['query']==overview.reference)]
-    notes='''<p>输入为已有SeedFC edge store；14 ROI/91边（以实际元数据为准），Fisher-z空间。固定队列为所有配置周/Run/view共同完整且模式非恒定的动物；available_pair在周内指标处表示当周有效，在参考比较处表示两个端点共同有效。</p>
+TABLE_NAMES = ("weekly_edges", "weekly_regions", "within_summary", "within_pairs", "fingerprint",
+               "self_similarity", "icc_edges", "icc_regions")
+NUMERIC_OPTIONS = ("reference", "cohorts", "cv_mean_threshold", "numerical_tolerance", "icc_min_mice")
+
+
+def verified_cache(folder):
+    manifest = folder / "manifest.json"
+    try:
+        record = json.loads(manifest.read_text(encoding="utf-8"))
+        if record["status"] == "complete" and record["outputs"] and all(
+                (folder / path).is_file() and sha(folder / path) == checksum
+                for path, checksum in record["outputs"].items()):
+            return record
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return None
+
+
+def publish_cache(pending, target, **metadata):
+    write_json(pending / "manifest.json", dict(status="complete", **metadata,
+        outputs={str(file.relative_to(pending)): sha(file) for file in pending.rglob("*") if file.is_file()}))
+    # A corrupt previous generation is retained separately for inspection.
+    if target.exists():
+        from uuid import uuid4
+        target.rename(target.with_name(f".{target.name}.{uuid4().hex}.invalid"))
+    pending.rename(target)
+
+
+def calculate(sources, cfg, destination, *, reuse, require_existing=False):
+    # Rendering edits must not invalidate numerical results.
+    numerical_code = digest([inspect.getsource(func) for func in
+        (load_output, select_views, edge_layout, compute, correlation, matching, paired_icc)])
+    inputs = {path: checksum for source in sources for path, checksum in source["inputs"].items()}
+    numeric_options = {key: cfg[key] for key in NUMERIC_OPTIONS}
+    selection = [dict(series=s["series"], weeks=s["meta"]["week_ids"], views=s["views"],
+                      mapping=s["mapping"], regions=[(level, name) for level, name, _ in s["groups"]])
+                 for s in sources]
+    key = digest([inputs, numeric_options, selection, numerical_code])
+    target = destination / "numeric" / key
+    with exclusive_run(target.parent / f"{key}.lock"):
+        cached = verified_cache(target) if reuse else None
+        if cached:
+            return target, cached, True
+        if require_existing:
+            raise ValueError("No verified numerical results for these inputs and analysis settings")
+        tables = {name: [] for name in TABLE_NAMES}
+        arrays, audit = {}, []
+        for source in sources:
+            compute(source, cfg, tables, arrays, audit)
+        pending = Path(mkdtemp(prefix=f".{key}.", dir=target.parent))
+        for name, rows in tables.items():
+            pd.DataFrame(rows).to_csv(pending / f"{name}.csv", index=False)
+        np.savez_compressed(pending / "matrices.npz", **arrays)
+        json_write(pending / "cohorts.json", audit)
+        if any(sha(path) != checksum for path, checksum in inputs.items()):
+            raise RuntimeError("SeedFC inputs changed during supplementary calculation")
+        publish_cache(pending, target, inputs=inputs, options=numeric_options,
+                      selection=selection, numerical_code=numerical_code)
+        return target, verified_cache(target), False
+
+
+def read_table(path):
+    try:
+        return pd.read_csv(path)
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame()
+
+
+def render_report(sources, cfg, viz, numeric, record, destination):
+    from srcs.visualization import scales
+    render_code = digest([inspect.getsource(func) for func in
+                          (render, render_report, write_report, displayed_weeks, resolve, scales.step, scales.palette)])
+    presentation = dict(visualization=viz, matrix_weeks=cfg["matrix_weeks"])
+    key = digest([record, presentation, render_code])
+    out = destination / "reports" / key
+    with exclusive_run(out.parent / f"{key}.lock"):
+        if verified_cache(out):
+            return out, True
+        # Render under the lock. Relative links stay valid after publication.
+        pending = Path(mkdtemp(prefix=f".{key}.", dir=out.parent))
+        tables = {name: read_table(numeric / f"{name}.csv") for name in TABLE_NAMES}
+        with np.load(numeric / "matrices.npz", allow_pickle=False) as arrays, plt.rc_context():
+            files = render(sources, cfg, tables, arrays, pending, viz)
+        write_report(pending, files, tables, numeric, cfg, viz)
+        json_write(pending / "effective_config.json", {**cfg, **presentation})
+        publish_cache(pending, out, numeric=str(numeric), inputs=record["inputs"],
+                      presentation=presentation, render_code=render_code)
+    return out, False
+
+
+def write_report(out, files, tables, numeric, cfg, viz):
+    overview = tables["fingerprint"]
+    if not overview.empty:
+        weeks = displayed_weeks(cfg["weeks"], viz, cfg["reference"])
+        overview = overview[(overview["query"] == overview.reference) & overview.week.isin(weeks)]
+    notes='''<p>输入为已有SeedFC edge store；FC模式使用保存的ROI与边顺序，在Fisher-z空间计算。固定队列为所有配置周/Run/view共同完整且模式非恒定的动物；available_pair在周内指标处表示当周有效，在参考比较处表示两个端点共同有效。</p>
 <p>SD为逐边跨鼠样本SD(ddof=1)，区域汇总为平均逐边SD。CV=SD/有符号均值，Fisher-z不是常规CV适用的比率尺度；仅供诊断。均值为0时CV未定义，近零阈值只用于标记及区域中位数筛选，不修改逐边CV；负分母保留。CV图不作为变异程度的主结论。</p>
 <p>组内相似性为异鼠模式Pearson r的算术平均，不含对角线。Self/Others均基于模式r，I_diff=100(Self−Others)。FA主结果为目标周查03w的唯一最高匹配，另保存反向和严格双向；并列不算成功。1/n只对应单向查询机会水平，不对应严格双向统计量。</p>
 <p>ICC逐边以鼠为对象，两次指定采集为固定测量，采用双向混合单次测量ICC(A,1)/ICC(C,1)的ANOVA公式；负值保留。区域图为逐边ICC中位数，不是对区域均值重新估计ICC；色标±1外保留扩展色条。03w同Run和同mean_fc是同记录，全部排除；03w跨Run保留。结果为描述性首轮计算，无新增CI或组间显著性检验。</p>
@@ -353,32 +434,106 @@ ICC(C,1) = (MS_mouse-MS_error)/(MS_mouse+(k-1)MS_error), k=2
 MS_mouse: between-mouse ANOVA mean square; MS_visit: between-visit mean square;
 MS_error: residual mouse-by-visit mean square. All are calculated per FC edge.
 All weekly within-group and reference matching matrices, with ordered animal IDs,
-are retained in numeric/matrices.npz. Only selected weeks/Run01 are previewed.</pre></details>'''
-    body=['<!doctype html><meta charset="utf-8"><title>SeedFC supplementary metrics</title><style>body{font:16px/1.8 system-ui;max-width:1350px;margin:auto;padding:25px}img{max-width:100%}table{border-collapse:collapse;font-size:12px;display:block;overflow:auto}td,th{border:1px solid #ccc;padding:5px}figure{margin:30px 0}figure:target{outline:3px solid teal}a,pre{overflow-wrap:anywhere}pre{white-space:pre-wrap}</style><h1>SeedFC A/N：组内变异、矩阵相似性与03w参考指纹</h1>',notes,
-          '<h2>固定队列同Run概览</h2>',overview.to_html(index=False,float_format=lambda x:f'{x:.4f}'),'<h2>图表目录</h2><ul>']
+are retained in numeric/matrices.npz. The report previews the configured matrix weeks and the selected Run view.</pre></details>'''
+    notes = notes.replace('03w', html.escape(cfg['reference']))
+    body=['<!doctype html><meta charset="utf-8"><title>SeedFC supplementary metrics</title><style>body{font:16px/1.8 system-ui;max-width:1350px;margin:auto;padding:25px}img{max-width:100%}table{border-collapse:collapse;font-size:12px;display:block;overflow:auto}td,th{border:1px solid #ccc;padding:5px}figure{margin:30px 0}figure:target{outline:3px solid teal}a,pre{overflow-wrap:anywhere}pre{white-space:pre-wrap}</style><h1>SeedFC：组内变异、矩阵相似性与参考周指纹</h1>',notes,
+          '<h2>同Run概览</h2>',overview.to_html(index=False,float_format=lambda x:f'{x:.4f}'),'<h2>图表目录</h2><ul>']
     body.extend(f'<li><a href="#fig{i}">{html.escape(p.stem)}</a></li>' for i,p in enumerate(files))
     body.append('</ul>')
     for i,p in enumerate(files):
-        body.append(f'<figure id="fig{i}"><figcaption>{html.escape(p.stem)}</figcaption><a href="{p.as_uri()}"><img loading="lazy" src="data:image/png;base64,{base64.b64encode(p.read_bytes()).decode()}"></a></figure>')
+        body.append(f'<figure id="fig{i}"><figcaption>{html.escape(p.stem)}</figcaption><a href="{p.relative_to(out).as_posix()}"><img loading="lazy" src="data:image/png;base64,{base64.b64encode(p.read_bytes()).decode()}"></a></figure>')
     body.append('<h2>数值下载</h2><ul>'+''.join(f'<li><a href="{p.as_uri()}">{p.name}</a></li>' for p in numeric.iterdir())+'</ul>')
     (out/'report.html').write_text(''.join(body),encoding='utf-8')
-    inputs={p:h for s in sources for p,h in s['inputs'].items()}
-    if args.config: inputs[str(Path(args.config).resolve())]=sha(args.config)
-    for p,h in inputs.items():
-        if sha(p)!=h: raise RuntimeError('Input changed during computation')
-    json_write(out/'manifest.json',dict(status='complete',config=cfg,inputs=inputs,code={str(Path(__file__).resolve()):sha(__file__)},
-        outputs={str(p.relative_to(out)):sha(p) for p in out.rglob('*') if p.is_file()},
-        cohorts={s['series']:np.array(s['meta']['mouse_ids'])[s['fixed']].tolist() for s in sources},
-        uncertainty='descriptive only; no confidence intervals or group p-values'))
-    print('RESULT',out,flush=True)
-    return out
+def run_outputs(outputs, atlas, *, configs=None, overrides=None, reference=None, destination=None, redraw=False):
+    defaults = load_config(PROJECT_ROOT / "configs/default.yaml")["seedfc_supplement"]
+    overrides = overrides or {}
+    overrides = {key: overrides[key] for key in ("visualization", "descriptive", "seedfc_supplement")
+                 if key in overrides}
+    supplement = dict(overrides.get("seedfc_supplement", {}))
+    legacy = {}
+    for key in ("missing_color", "series_colors", "view_markers"):
+        if key in supplement:
+            legacy[key] = supplement.pop(key)
+    for old, role in (("cmap", "sequential"), ("signed_cmap", "diverging")):
+        if old in supplement:
+            legacy.setdefault("colormaps", {})[role] = supplement.pop(old)
+    for key in ("dpi", "formats", "panel_size", "font_size"):
+        if key in supplement:
+            legacy.setdefault("supplement", {})[key] = supplement.pop(key)
+    overrides["seedfc_supplement"] = supplement
+    overrides["visualization"] = merge(legacy, overrides.get("visualization", {}))
+    if configs is None:
+        configs = [saved_config(output) for output in outputs]
+    configs = [merge(config, overrides) for config in configs]
+    if not configs or len(configs) != len(outputs):
+        raise ValueError("Expected one configuration per SeedFC output")
+    resolved = []
+    for config in configs:
+        cfg = merge(defaults, config.get("seedfc_supplement", {}))
+        unknown = set(cfg) - set(defaults) - {"reference"}
+        if unknown:
+            raise ValueError(f"Unknown supplementary settings: {sorted(unknown)}")
+        cfg.pop("enabled")
+        cfg["reference"] = reference or cfg.get("reference") or config.get("descriptive", {}).get("reference_week")
+        effective = settings(config)
+        validate(effective)
+        resolved.append((cfg, effective))
+    cfg, viz = resolved[0]
+    if any(other != cfg or style != viz for other, style in resolved[1:]):
+        raise ValueError("Supplementary output configurations must agree on analysis and visualization settings")
+    if (not cfg["cohorts"] or len(set(cfg["cohorts"])) != len(cfg["cohorts"])
+            or not set(cfg["cohorts"]) <= {"fixed_window", "available_pair"}):
+        raise ValueError("Invalid supplementary cohort selection")
+    if (not np.isfinite([cfg["cv_mean_threshold"], cfg["numerical_tolerance"]]).all()
+            or cfg["cv_mean_threshold"] < 0 or cfg["numerical_tolerance"] <= 0
+            or type(cfg["icc_min_mice"]) is not int or cfg["icc_min_mice"] < 3):
+        raise ValueError("Invalid supplementary numerical settings")
+    formats = viz["supplement"]["formats"]
+    if "png" not in formats or not set(formats) <= {"png", "pdf"}:
+        raise ValueError("Supplementary formats must include PNG and optionally PDF")
+    sources = [load_output(path, atlas, config) for path, config in zip(outputs, configs)]
+    if len({source["series"] for source in sources}) != len(sources):
+        raise ValueError("Distinct SeedFC series labels required")
+    first = sources[0]
+    for source in sources:
+        if (any(source["meta"][key] != first["meta"][key] for key in ("roi_labels", "week_ids", "run_ids"))
+                or source["views"] != first["views"] or source["mapping"] != first["mapping"]
+                or [(level, name) for level, name, _ in source["groups"]] !=
+                   [(level, name) for level, name, _ in first["groups"]]):
+            raise ValueError("Incompatible SeedFC ROIs, weeks, Runs, views or networks")
+        if cfg["reference"] not in source["meta"]["week_ids"]:
+            raise ValueError("Set descriptive.reference_week or --reference to an analysis week")
+    cfg["weeks"] = first["meta"]["week_ids"]
+    root = Path(destination or (Path(configs[0]["paths"]["output"]) / "_supplement"))
+    if not root.is_absolute():
+        root = PROJECT_ROOT / root
+    if redraw:
+        # Enforce a verified numeric hit inside the same lock as regular calculations.
+        numeric, record, reused = calculate(sources, cfg, root, reuse=True, require_existing=True)
+    else:
+        numeric, record, reused = calculate(sources, cfg, root, reuse=True)
+    report, reused_report = render_report(sources, cfg, viz, numeric, record, root)
+    return dict(atlas=atlas, path=str(report), numeric=str(numeric), reused_numeric=reused,
+                reused_report=reused_report, manifest_sha256=sha(report / "manifest.json"))
+
+
+def run(args):
+    overrides = load_config(args.config) if args.config else None
+    atlas = args.atlas
+    if atlas is None:
+        atlas = "_".join(saved_config(args.outputs[0])["variables"]["Atlas"][0])
+    result = run_outputs(args.outputs, atlas, overrides=overrides, reference=args.reference,
+                         destination=args.destination, redraw=getattr(args, "redraw", False))
+    print("RESULT", result["path"], flush=True)
+    return Path(result["path"])
 
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--outputs',nargs='+',required=True,type=Path)
-    parser.add_argument('--atlas',default='FourNetworks')
+    parser.add_argument('--atlas', help='Atlas partition; defaults to the first configured partition')
     parser.add_argument('--reference',help='Reference label; default from effective settings')
     parser.add_argument('--config',type=Path,help='YAML containing seedfc_supplement settings')
-    parser.add_argument('--destination',type=Path,help='Parent directory for a new timestamped result')
+    parser.add_argument('--destination',type=Path,help='Root directory for cached supplementary results')
+    parser.add_argument("--redraw", action="store_true", help="Require existing verified numerical results")
     run(parser.parse_args())
