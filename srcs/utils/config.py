@@ -120,6 +120,11 @@ class RunContext:
         return [[ids[i] for i in group] for group in self.group_indices(weeks, runs)]
 
     @cached_property
+    def workflow(self):
+        from srcs.workflow import Workflow
+        return Workflow(self.config, PROJECT_ROOT, resolve_source=not getattr(self.args, "saved_output", None))
+
+    @cached_property
     def data_identity(self):
         from srcs.workflow.identity import data_identity
         return data_identity(self, PROJECT_ROOT)
@@ -226,11 +231,14 @@ def load_config(path):
     return config
 
 
-def load_context(config_path=None, create_dirs=True):
+def load_context(config_path=None, create_dirs=True, *, enabled_functions=()):
     args = Namespace(config=str(config_path or "configs/Aseries.yaml"))
     args.config = str((PROJECT_ROOT / args.config).resolve())
 
     config = load_config(args.config)
+    if enabled_functions:
+        from srcs.workflow.plugins import enable_functions
+        config = enable_functions(config, enabled_functions)
     from srcs.utils.visualization import settings, validate
     validate(settings(config))
     if any(not isinstance(config.get("paths", {}).get(key), str) or not config["paths"][key]

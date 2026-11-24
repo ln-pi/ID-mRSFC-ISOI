@@ -12,13 +12,7 @@ from srcs.core.identity import code_closure, digest
 from srcs.core.runtime import cache_key, reusable
 from srcs.utils.config import PROJECT_ROOT
 from srcs.utils.dataset import resolve_recording
-from srcs.workflow import MODULES, PRODUCTS
-
-
-PARENTS = {"edges": ("fc",), "geometry": ("edges",), "inference": ("geometry",),
-           "pairwise": ("edges",), "descriptive": ("edges",),
-           "stability": ("edges", "descriptive"), "longitudinal": ("edges", "descriptive"),
-           "combined": ("edges",), "statistics": ("combined",)}
+from srcs.workflow.plugins import function_options
 
 
 def record_path(ctx, stage):
@@ -70,14 +64,13 @@ def signature(ctx, stage):
     elif stage == "edges":
         from srcs.utils.edge_store import source_identity
         inputs = {"_".join(a): digest(source_identity(ctx, "_".join(a))[0]) for a in ctx.atlases}
-    if stage == "seedfc":
-        from plugins.seedfc import input_files
-        inputs = input_files(ctx,ctx.config["plugins"]["seedfc"]["options"])
-    parents = PARENTS.get(stage, ())
+    definition = ctx.workflow.stages[stage]
+    if definition.source:
+        source = ctx.workflow.source
+        inputs = source.entry(":input_files")(ctx, source.options)
+    parents = definition.parents
     if stage == "fc" and record_path(ctx,"preprocess").exists():
         parents = ("preprocess",)
-    if stage == "edges" and "seedfc" in ctx.data_identity["stages"]:
-        parents = ("seedfc",)
     for parent in parents:
         previous = record(ctx, parent)
         if not previous and parent == "fc" and (Path(ctx.output_path) / "metadata/fc_import_provenance.json").exists():
@@ -85,9 +78,14 @@ def signature(ctx, stage):
         if not previous or not reusable(previous, signature(ctx, parent)["cache"]["key"]):
             raise ValueError(f"Inputs or products changed: rerun {parent}")
         inputs[parent] = digest(previous["cache"]["outputs"])
-    option_keys = import_module(MODULES[stage]).OPTION_KEYS
-    options = {key: ctx.section(key) for key in option_keys}
-    code = digest(code_closure(PROJECT_ROOT, MODULES[stage]))
+    option_keys = import_module(definition.module).OPTION_KEYS
+    options = {}
+    for key in option_keys:
+        owner = ctx.workflow.option_sections.get(key)
+        options[key] = function_options(ctx.config, owner, key) if owner else ctx.section(key)
+    if definition.source:
+        options["plugins"] = {"source": {source.spec["id"]: {"options": source.options}}}
+    code = digest(code_closure(PROJECT_ROOT, definition.module))
     return dict(schema="stage_record", stage=stage, code=code, options=options,
                 option_keys=option_keys, options_digest=digest(options), inputs=inputs,
                 cache={"key": cache_key(code, options, inputs)})
@@ -95,12 +93,12 @@ def signature(ctx, stage):
 
 def products(ctx, stage):
     root = Path(ctx.output_path)
-    if stage in ("preprocess", "fc", "seedfc"):
+    if stage in ("preprocess", "fc") or ctx.workflow.stages[stage].source:
         prefix = "01_preprocess" if stage == "preprocess" else "02_correlation"
         audit = max((root / "metadata/batch_reports").glob(prefix + "_*.json"),
                     key=lambda p: (p.stat().st_mtime_ns, p.name))
         files = [audit]
-        if stage in ("fc","seedfc"):
+        if stage != "preprocess":
             files.extend(Path(ctx.correlation_path).glob("*_excluded.pkl"))
         else:
             files.extend(Path(p) for p in recording_inputs(ctx) if p.endswith("_FiltDRR.npy"))
@@ -122,7 +120,7 @@ def run_cached(ctx, stage, action):
     try:
         refs = {}
         for parent in state["inputs"]:
-            for item in record(ctx,parent).get("products",[]) if parent in MODULES else ():
+            for item in record(ctx,parent).get("products",[]) if parent in ctx.workflow.stages else ():
                 refs[item["name"]]=ProductRef(**dict(item,path=Path(item["path"])))
         ctx.stage = StageContext(refs,state["options"],state["option_keys"],
                                  Path(ctx.output_path),ctx.analysis_tag)
@@ -133,7 +131,7 @@ def run_cached(ctx, stage, action):
         state["cache"]["outputs"] = products(ctx, stage)
         refs = []
         outputs = list(state["cache"]["outputs"])
-        for name, patterns in PRODUCTS["fc" if stage=="seedfc" else stage].items():
+        for name, patterns in ctx.workflow.stages[stage].products.items():
             selected = [p for p in outputs if any(Path(p).match(glob) for glob in patterns)]
             if "@aggregate" in patterns:
                 selected = [ctx.statistics_path]

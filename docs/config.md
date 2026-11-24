@@ -27,8 +27,9 @@
 | pairwise.window_interpretation | N 疾病时间窗或 A 对齐观察窗的解释记录 |
 | descriptive.reference_week | 自身变化参照；默认 03w |
 | visualization | 热图色图、色阶、展示周次、报告布局和诊断图样式 |
-| seedfc_supplement | SeedFC 补充分析开关、队列、数值阈值与矩阵示例周 |
-| compare | 比较重采样种子、重复数和异鼠候选上限 |
+| plugins.function.seedfc_supplement | SeedFC 补充分析开关、队列、数值阈值与矩阵示例周 |
+| plugins.source.seedfc | 外部 SeedFC 来源、分区和采集标签设置 |
+| plugins.function | 可选分析功能的开关和参数 |
 
 数据范围、来源和处理选项及计算代码决定 data_tag。metadata/data_identity.json 保存数据身份。数值阶段在 metadata/stages 中记录自己的选项、输入和产品摘要；同目录内根据依赖重算。显示参数只影响报告。--tag 可追加目录后缀。
 
@@ -63,9 +64,9 @@ visualization:
 
 ## 补充指标与代码内约束
 
-SeedFC 使用 `descriptive.weeks`、`descriptive.run_views`、`descriptive.reference_week` 与网络映射。 `seedfc_supplement.cohorts: [available_pair]` 下，周内指标取本周、该视图有效动物，参考周识别和 ICC 对两端有效鼠按 ID 对齐。 `mean_fc` 需要该鼠该周全部配置 Run 都有效。 `fixed_window` 按补充分析全范围共同完整及模式条件筛选，主 descriptive 的固定队列按视图定义。常量模式不参与模式 Pearson，仍可参与 SD。
+SeedFC 使用 `descriptive.weeks`、`descriptive.run_views`、`descriptive.reference_week` 与网络映射。 `plugins.function.seedfc_supplement.options.cohorts: [available_pair]` 下，周内指标取本周、该视图有效动物，参考周识别和 ICC 对两端有效鼠按 ID 对齐。 `mean_fc` 需要该鼠该周全部配置 Run 都有效。 `fixed_window` 按补充分析全范围共同完整及模式条件筛选，主 descriptive 的固定队列按视图定义。常量模式不参与模式 Pearson，仍可参与 SD。
 
-变量和公式约束留在计算实现里。包括 Fisher-z 的数值裁剪、唯一上三角边序、样本 SD 的 `ddof=1`、ICC 单次测量公式的两个测量端、每周离散度的分母及 NPZ 轴顺序。 `seedfc_supplement.icc_min_mice` 可调，默认 3。 `visualization.supplement.formats` 必须包含 PNG 供 HTML 预览。
+变量和公式约束留在计算实现里。包括 Fisher-z 的数值裁剪、唯一上三角边序、样本 SD 的 `ddof=1`、ICC 单次测量公式的两个测量端、每周离散度的分母及 NPZ 轴顺序。 `plugins.function.seedfc_supplement.options.icc_min_mice` 可调，默认 3。 `visualization.supplement.formats` 必须包含 PNG 供 HTML 预览。
 
 ### 仍在代码中定义的可调策略
 

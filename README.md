@@ -4,9 +4,9 @@ A Python workflow for studying individual differences and longitudinal changes i
 
 The project connects acquisition-level preprocessing, cortical functional connectivity (FC), individual identification, and longitudinal network analysis. Each mouse, week, and recording Run remains identifiable throughout the workflow, supporting both comparisons of individual recordings and comparisons of connectivity patterns averaged across observations.
 
-## P3 high-dimensional workflow
+## Workflow and plugins
 
-See [workflow](docs/workflow.md), [geometry methods](docs/geometry_methods.md), and [SeedFC input contract](docs/plugin_contract.md). Geometry and inference run after the edge store. Saved outputs support offline HTML/PDF reports and independent A/N or paired GSR comparisons.
+The workflow supports native FC and audited SeedFC imports. Optional analysis plugins consume the saved edge store. Offline HTML/PDF reports and independent A/N or paired GSR displays use saved products. See the [workflow](docs/workflow.md) and [plugin contract](docs/plugin_contract.md).
 
 ## Features
 
@@ -112,8 +112,6 @@ Statistical summaries include paired effect sizes, repeated-measures analysis, a
 | `preprocess` | Convert raw recordings, perform motion correction and atlas alignment, and prepare filtered signals |
 | `fc` | Compute labeled FC matrices for individual recordings |
 | `edges` | Assemble the shared mouse × week × Run × edge arrays |
-| `geometry` | Calculate Run distances, discriminability, separation margins, reproducible differences, and saved projections |
-| `inference` | Summarize weekly endpoints and animal-level sensitivity and trends |
 | `pairwise` | Calculate per-Run cross-week similarities and window-based mouse metrics |
 | `descriptive` | Compute distances, dispersion, Delta FC, edge/regional variability, and Run repeatability |
 | `stability` | Estimate Run repeatability, Delta FC persistence, stable components, and edgewise ICC |
@@ -196,7 +194,7 @@ data/output/<data_tag>/
 └── metadata/                Configuration, source information, and recording/stage records
 ```
 
-Logs are stored at the configured log paths. Batch execution plans and status summaries are written under `reports/automatic/`. Generated data, reports, and logs are local outputs.
+The bundled configurations write logs to `data/output/_logs/`. Batch status summaries default to `_batches/` under the first configuration's output root. Generated data, reports, and logs are local outputs.
 
 ## Project structure
 

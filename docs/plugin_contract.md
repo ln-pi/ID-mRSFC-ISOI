@@ -16,3 +16,21 @@ python run.py --configs configs/SeedFC_Aseries_noGSR.yaml configs/SeedFC_Nseries
 FourNetworks 保留 Motor（MOP、MOS）、Somatosensory（SSP）、Visual（VIS）、DefaultMode（RSP、ACA、PL）各 ROI 的左右半球。排除发生在每个分区的 FC 有效性判定之前。按原编号清单核验，noGSR Aseries 有 277 个有效采集、3 个缺失文件，Nseries 有 392 个有效采集。该网络映射是预先指定的分组，图中的 ROI 与网络对按上述顺序排列。
 
 `--stage seedfc --dry-run` 只核验源文件。`--start seedfc` 先生成带标签的原生周表、逐记录审计和来源摘要，再进入 edges。启用该来源的配置与原生 preprocess/fc 互斥。
+
+
+## 插件目录与配置
+
+`plugins/source/<id>/plugin.yaml` 定义 FC 来源。单次运行可选择一个来源，空配置走原生 FC。来源声明输入验证入口和参与数据身份的数值源码。 SeedFC 启用位置为 `plugins.source.seedfc.enabled`，旧版 `plugins.seedfc` 配置继续可读。
+
+`plugins/function/<id>/plugin.yaml` 定义分析或绘图能力。每个功能单独启用，可声明数值阶段、依赖阶段、产物、报告分节和两系列比较入口，或登记批次收尾任务。功能阶段使用同一份已校验的 edge store 和已发布的结果。功能开关属于阶段配置，不进入 FC 或 edge store 数据身份。
+
+```yaml
+plugins:
+  function:
+    seedfc_supplement:
+      enabled: true
+```
+
+这段配置合并到已有 SeedFC 配置中的 `plugins` 下，原有 `plugins.source.seedfc.options` 提供采集路径、系列和分区。
+
+主流程从已启用插件的清单生成阶段列表。功能插件可随项目提供，也可以作为 Python 包安装到同一环境，包内须提供对应命名空间和 `plugin.yaml`。显式启用后，启动时校验功能包和专用依赖。普通运行、历史重绘和比较都可通过 `--function <id>` 为当前命令启用已安装功能。

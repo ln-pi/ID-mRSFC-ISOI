@@ -17,7 +17,6 @@ dependencies:
   - tqdm
   - seaborn
   - statsmodels
-  - scikit-learn
   - pillow
   - tifffile
   - pingouin

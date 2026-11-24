@@ -20,6 +20,14 @@ def module_path(root, module):
     for path in (base.with_suffix(".py"), base / "__init__.py"):
         if path.is_file():
             return path
+    if module.startswith("plugins.function."):
+        from importlib.util import find_spec
+        try:
+            spec = find_spec(module)
+        except (ImportError, AttributeError, ValueError):
+            return None
+        if spec and spec.origin:
+            return Path(spec.origin)
     return None
 
 

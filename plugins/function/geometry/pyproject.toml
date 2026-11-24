@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "isoi-geometry"
+version = "0.1.0"
+description = "Optional high-dimensional FC geometry plugin for ID-mRSFC-ISOI"
+requires-python = ">=3.13"
+dependencies = ["scikit-learn"]
+
+[tool.setuptools]
+packages = ["plugins.function.geometry"]
+package-dir = {"plugins.function.geometry" = "."}
+
+[tool.setuptools.package-data]
+"plugins.function.geometry" = ["plugin.yaml", "methods.md"]

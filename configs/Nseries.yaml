@@ -3,7 +3,7 @@ paths:                                                       #	Locations of inpu
   processed: E:\data\processed\                              #	Directory containing preprocessed recordings.
   output: data\output\                                       #	Root directory for analysis outputs.
   mask: data\mask\                                           #	Directory containing atlas masks.
-  log: logs\Nseries.log                                      #	Path of the workflow log file.
+  log: data/output/_logs/Nseries.log                         #	Path of the workflow log file.
 variables:                                                   #	Dataset identity and ordered acquisition IDs.
   series: Nseries                                            #	Series label used to identify the dataset and reports.
   dataset: ''                                                #	Name of the dataset subdirectory.
@@ -205,3 +205,8 @@ pairwise:                                                    #	Week-pair selecti
   window_interpretation: N_disease_time_windows              #	Label describing the meaning of the observation windows.
 descriptive:                                                 #	Descriptive analysis and shared SeedFC selection settings.
   reference_week: 03w                                        #	Reference acquisition week used for baseline comparisons.
+plugins:                                                     #	Source and function plugins.
+  source: {}                                                 #	Use the native FC source when empty.
+  function:                                                  #	Optional analysis functions.
+    geometry:                                                #	High-dimensional analysis plugin.
+      enabled: false                                         #	Run high-dimensional geometry and inference.

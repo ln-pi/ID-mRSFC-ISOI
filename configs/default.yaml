@@ -4,7 +4,7 @@ paths:                                                       #	Locations of inpu
   processed: data\processed\                                 #	Directory containing preprocessed recordings.
   output: data\output\                                       #	Root directory for analysis outputs.
   mask: data\mask\                                           #	Directory containing atlas masks.
-  log: logs/default.log                                      #	Path of the workflow log file.
+  log: data/output/_logs/default.log                         #	Path of the workflow log file.
 variables:                                                   #	Dataset identity and ordered acquisition IDs.
   series: Aseries                                            #	Series label used to identify the dataset and reports.
   dataset: ''                                                #	Name of the dataset subdirectory.
@@ -286,18 +286,32 @@ pairwise:                                                    #	Week-pair selecti
   window_interpretation: N_aligned_observation_windows       #	Label describing the meaning of the observation windows.
 descriptive:                                                 #	Descriptive analysis and shared SeedFC selection settings.
   reference_week: 03w                                        #	Reference acquisition week used for baseline comparisons.
-seedfc_supplement:                                           #	SeedFC metrics calculated after the complete batch.
-  enabled: false                                             #	Enable this plugin or postprocessing task.
-  cohorts:                                                   #	Cohort policies to calculate for supplementary metrics.
-  - available_pair
-  cv_mean_threshold: 1.0e-06                                 #	Minimum absolute edge mean for regional CV aggregation.
-  numerical_tolerance: 1.0e-12                               #	Tolerance used to reject unstable numerical denominators.
-  icc_min_mice: 3                                            #	Minimum number of paired animals for ICC.
-  matrix_weeks:                                              #	Weeks eligible for representative similarity matrices.
-  - 03w
-  - 07w
-  - 13w
-compare:                                                     #	Numerical options for saved-output comparison.
-  seed: 42                                                   #	Random seed for comparison resampling and candidate selection.
-  repeats: 200                                               #	Number of comparison sensitivity resamples.
-  candidate_limit: 9                                         #	Maximum number of other animals sampled per query.
+plugins:                                                     #	Source and function plugins.
+  source: {}                                                 #	Use the native FC source when empty.
+  function:                                                  #	Optional analysis functions.
+    geometry:                                                #	High-dimensional analysis plugin.
+      enabled: false                                         #	Run high-dimensional geometry and inference.
+      options:                                               #	Geometry-specific numerical settings.
+        geometry:                                            #	Options for the geometry stage.
+          matched_candidates: 9                              #	Maximum number of matched foreign animals per query.
+          seed: 42                                           #	Random seed for matched candidates.
+        inference:                                           #	Options for geometry-derived inference.
+          primary_endpoint: q_mean                           #	Endpoint summarized by animal.
+          n_bootstrap: 200                                   #	Number of animal-block resamples.
+          seed: 42                                           #	Random seed for inference resampling.
+        compare:                                             #	Options for geometry comparisons.
+          seed: 42                                           #	Random seed for comparison resampling and candidate selection.
+          repeats: 200                                       #	Number of comparison sensitivity resamples.
+          candidate_limit: 9                                 #	Maximum number of other animals sampled per query.
+    seedfc_supplement:                                       #	Supplementary SeedFC metrics and reports.
+      enabled: false                                         #	Enable this plugin or postprocessing task.
+      options:                                               #	Supplementary metrics and matrix options.
+        cohorts:                                             #	Cohort policies to calculate for supplementary metrics.
+        - available_pair
+        cv_mean_threshold: 1.0e-06                           #	Minimum absolute edge mean for regional CV aggregation.
+        numerical_tolerance: 1.0e-12                         #	Tolerance used to reject unstable numerical denominators.
+        icc_min_mice: 3                                      #	Minimum number of paired animals for ICC.
+        matrix_weeks:                                        #	Weeks eligible for representative similarity matrices.
+        - 03w
+        - 07w
+        - 13w

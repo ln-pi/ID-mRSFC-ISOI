@@ -1,7 +1,7 @@
 import re
 
 from srcs.core.identity import code_closure, digest
-from srcs.workflow import MODULES
+from srcs.workflow import CORE
 
 
 def data_identity(ctx, root):
@@ -16,21 +16,21 @@ def data_identity(ctx, root):
             "partitions": [{"name": "_".join(a), "exclude": a} for a in ctx.atlases],
             "paths": {key: ctx.paths[key] for key in ("raw", "processed", "mask")},
         },
-        "stages": {name: {"kind": "builtin", "code": digest(code_closure(root, MODULES[name])),
+        "stages": {name: {"kind": "builtin", "code": digest(code_closure(root, CORE[name].module)),
                           "options": value} for name, value in options.items()},
     }
-    from srcs.workflow.sources import active_source, source_code
-    external = active_source(ctx.config, root)
+    from srcs.workflow.sources import source_code
+    external = ctx.workflow.source
     if external:
-        from plugins.seedfc import input_files
-        spec, settings = external
-        name = spec["id"]
+        input_files = external.entry(":input_files")
+        settings = external.options
+        name = external.spec["id"]
         identity["scope"].update(branch=settings["branch"], source={
             "kind":"source", "id":name, "digest":digest(input_files(ctx,settings))})
         identity["scope"]["partitions"] = [
             {"name":label,"exclude":rules["exclude"]} for label,rules in settings["partitions"].items()]
         identity["stages"] = {name: {"kind":"source",
-                                      "code":source_code(spec,root),"options":settings},
+                                      "code":source_code(external,root),"options":settings},
                               "edges":identity["stages"]["edges"]}
     return identity
 

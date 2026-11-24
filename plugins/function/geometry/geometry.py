@@ -6,9 +6,9 @@ import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
 
-from srcs.analysis.geometry.crossval import crossvalidated
-from srcs.analysis.geometry.distances import distances, dispersion
-from srcs.analysis.geometry.discriminability import score
+from .crossval import crossvalidated
+from .distances import distances, dispersion
+from .discriminability import score
 from srcs.core.artifacts import publish, write_json
 from srcs.core.identity import digest
 from srcs.utils.edge_store import load_store
@@ -20,8 +20,17 @@ from srcs.core.runtime import numerical_stage
 OPTION_KEYS = ("geometry",)
 
 
+def validate(ctx):
+    if len(ctx.runs) < 2:
+        raise ValueError("Geometry requires at least two Runs")
+    for atlas in map("_".join, ctx.atlases):
+        load_store(ctx, atlas)
+
+
 @numerical_stage("geometry", OPTION_KEYS)
 def run(ctx):
+    if len(ctx.runs) < 2:
+        raise ValueError("Geometry requires at least two Runs")
     folder = Path(ctx.output_dir("results", "geometry"))
     cfg = ctx.section("geometry")
     k = cfg.get("matched_candidates", 9)

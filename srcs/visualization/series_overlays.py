@@ -8,6 +8,7 @@ from srcs.core.artifacts import sha256, write_json
 from srcs.visualization.phase_pairwise import render as render_phases
 from srcs.analysis.phases import weekly_metric_means
 from srcs.utils.visualization import displayed_weeks, filter_cohorts, settings
+from srcs.utils.storage import save_table
 from srcs.visualization.scales import resolve
 
 
@@ -89,16 +90,18 @@ def render_trajectories(frames, colors, viz, save):
                 save(fig, f"{prefix}longitudinal_{atlas}_{cohort}_{mode}")
 
 
-def prepare_and_render(left, right, folder, first_label, second_label, *, viz=None, config=None):
+def prepare_and_render(left, right, folder, first_label, second_label, *, viz=None, config=None, products=None):
     config = config or {}
     viz = settings(config) if viz is None else viz
     reference = config.get("descriptive", {}).get("reference_week")
     folder = Path(folder)
     destination = folder.parents[1]/"report"/"series_overlays"
     destination.mkdir(parents=True, exist_ok=True)
-    sources, phase_products, frames, figures = {}, [], {}, []
+    sources, phase_products, frames, figures, tables = {}, [], {}, [], []
     for side, root, label in (("first", left, first_label), ("second", right, second_label)):
         for stage, filename in (("pairwise", "selection.json"), ("longitudinal", "index.json"), ("descriptive", "index.json")):
+            if products is not None and f"{stage}/{filename}" not in products:
+                continue
             path = root/"results"/stage/filename
             if not path.is_file():
                 continue
@@ -124,7 +127,9 @@ def prepare_and_render(left, right, folder, first_label, second_label, *, viz=No
     for name, pieces in frames.items():
         table = pd.concat(pieces, ignore_index=True)
         combined[name] = table
-        table.to_csv(folder/(name+".csv"), index=False)
+        path = folder / (name + ".csv")
+        save_table(path, table, index=False)
+        tables.append(path)
     colors = dict(zip(("first", "second"), viz["series_colors"]))
     scales = []
     plot_frames = {name: filter_cohorts(frame, viz) for name, frame in combined.items()}
@@ -169,10 +174,12 @@ def prepare_and_render(left, right, folder, first_label, second_label, *, viz=No
     else:
         direction_scales = {}
     write_json(destination/"color_scales.json", scales + list(direction_scales.values()))
-    write_json(destination/"manifest.json", dict(inputs=sources, direction_color_scales=direction_scales,
+    manifest = destination / "manifest.json"
+    write_json(manifest, dict(inputs=sources, direction_color_scales=direction_scales,
                figures={p: sha256(p) for p in figures},
                labels={"first": first_label, "second": second_label},
                aggregation="LOO references remain within series; group color and Run marker shared"))
+    return [*tables, manifest]
 
 
 def direction_values(regional):

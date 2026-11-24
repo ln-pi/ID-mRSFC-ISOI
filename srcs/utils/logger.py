@@ -3,6 +3,7 @@ import os
 import sys
 
 from datetime import datetime
+from pathlib import Path
 from logging.handlers import RotatingFileHandler
 from typing import Optional, cast
 
@@ -77,7 +78,7 @@ def setup_logger(
         datafmt="%Y-%m-%d %H:%M:%S"
     )
 
-    requested_log_file = log_file or "logs\\default.log"
+    requested_log_file = log_file or str(Path(__file__).resolve().parents[2] / "data/output/_logs/default.log")
     has_handlers = bool(logger.handlers)
     current_log_file = getattr(logger, "_log_file", None)
     configured_from_config = getattr(logger, "_configured_from_config", False)

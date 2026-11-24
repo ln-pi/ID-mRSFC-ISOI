@@ -1,13 +1,13 @@
-paths:                                                       #	Locations of input, output and log files.
-  raw: data\raw\                                             #	Directory containing raw recordings.
-  processed: data\processed                                  #	Directory containing preprocessed recordings.
-  output: data\output\                                       #	Root directory for analysis outputs.
-  mask: data\mask\                                           #	Directory containing atlas masks.
-  log: logs/SeedFC_Aseries_noGSR.log                         #	Path of the workflow log file.
-variables:                                                   #	Dataset identity and ordered acquisition IDs.
-  series: Aseries                                            #	Series label used to identify the dataset and reports.
-  dataset: SeedFC                                            #	Name of the dataset subdirectory.
-  Week_ids:                                                  #	Ordered acquisition week identifiers.
+paths:                                                           #	Locations of input, output and log files.
+  raw: data\raw\                                                 #	Directory containing raw recordings.
+  processed: data\processed                                      #	Directory containing preprocessed recordings.
+  output: data\output\                                           #	Root directory for analysis outputs.
+  mask: data\mask\                                               #	Directory containing atlas masks.
+  log: data/output/_logs/SeedFC_Aseries_noGSR.log                #	Path of the workflow log file.
+variables:                                                       #	Dataset identity and ordered acquisition IDs.
+  series: Aseries                                                #	Series label used to identify the dataset and reports.
+  dataset: SeedFC                                                #	Name of the dataset subdirectory.
+  Week_ids:                                                      #	Ordered acquisition week identifiers.
   - 00w
   - 01w
   - 02w
@@ -22,7 +22,7 @@ variables:                                                   #	Dataset identity 
   - 11w
   - 12w
   - 13w
-  Mouse_ids:                                                 #	Ordered animal identifiers in this series.
+  Mouse_ids:                                                     #	Ordered animal identifiers in this series.
   - A25
   - A26
   - A27
@@ -33,154 +33,154 @@ variables:                                                   #	Dataset identity 
   - A32
   - A33
   - A35
-  Run_ids:                                                   #	Ordered acquisition run identifiers.
+  Run_ids:                                                       #	Ordered acquisition run identifiers.
   - Run01
   - Run02
-  Atlas:                                                     #	Ordered atlas partitions used for analysis.
+  Atlas:                                                         #	Ordered atlas partitions used for analysis.
   - - FourNetworks
-preprocess:                                                  #	Preprocessing options.
-  keepna: false                                              #	Keep recording traces with invalid values during preprocessing.
-  resume: true                                               #	Reuse verified artifacts from previous runs.
-correlation:                                                 #	Functional connectivity calculation options.
-  resume: true                                               #	Reuse verified artifacts from previous runs.
-analysis:                                                    #	Global analysis and output settings.
-  split_axis: week                                           #	Axis split into disjoint identification halves.
-  selection_mode: single                                     #	Use individual or cumulative observation selections.
-  statistics_file: statistics.pkl                            #	Filename for the combined identification statistics.
-ID:                                                          #	Identification and permutation settings.
-  completeness_mode: strict                                  #	Rule for selecting complete identification observations.
-  group_mode: random                                         #	Method for splitting observations into disjoint halves.
-  session_seed: 42                                           #	Random seed for splitting observations and shuffling labels.
-  shuffle: true                                              #	Run the permutation analysis for identification.
-  n_iter: 1000                                               #	Number of identification permutations.
-visualization:                                               #	Report and diagnostic plotting settings.
-  colormaps:                                                 #	Global continuous color maps grouped by presentation purpose.
-    sequential: inferno                                      #	Color map for ordered values, magnitude and similarity.
-    diverging: coolwarm                                      #	Color map for signed departures centered at zero.
-  edge_graph:                                                #	Common circular edge graph settings.
-    threshold: 99                                            #	Percentile used to select edges for the circular graph.
-    gap: 0.25                                                #	Spacing between hemispheres in the circular graph.
-    cross_only: false                                        #	Draw only edges that cross hemispheres.
-    save_mat: true                                           #	Save the edge graph matrix preview.
-  defaults:                                                  #	Default figure rendering options.
-    dpi: 180                                                 #	Resolution in dots per inch.
-    render_dpi: 300                                          #	Resolution used when rendering saved figures.
-    show: false                                              #	Display plot windows interactively.
-    save: true                                               #	Write generated figures to disk.
-    log: false                                               #	Log figure rendering and save events.
-  fc_heatmap:                                                #	Style of per-acquisition signed FC heatmaps.
-    figsize:                                                 #	Figure width and height in inches.
+preprocess:                                                      #	Preprocessing options.
+  keepna: false                                                  #	Keep recording traces with invalid values during preprocessing.
+  resume: true                                                   #	Reuse verified artifacts from previous runs.
+correlation:                                                     #	Functional connectivity calculation options.
+  resume: true                                                   #	Reuse verified artifacts from previous runs.
+analysis:                                                        #	Global analysis and output settings.
+  split_axis: week                                               #	Axis split into disjoint identification halves.
+  selection_mode: single                                         #	Use individual or cumulative observation selections.
+  statistics_file: statistics.pkl                                #	Filename for the combined identification statistics.
+ID:                                                              #	Identification and permutation settings.
+  completeness_mode: strict                                      #	Rule for selecting complete identification observations.
+  group_mode: random                                             #	Method for splitting observations into disjoint halves.
+  session_seed: 42                                               #	Random seed for splitting observations and shuffling labels.
+  shuffle: true                                                  #	Run the permutation analysis for identification.
+  n_iter: 1000                                                   #	Number of identification permutations.
+visualization:                                                   #	Report and diagnostic plotting settings.
+  colormaps:                                                     #	Global continuous color maps grouped by presentation purpose.
+    sequential: inferno                                          #	Color map for ordered values, magnitude and similarity.
+    diverging: coolwarm                                          #	Color map for signed departures centered at zero.
+  edge_graph:                                                    #	Common circular edge graph settings.
+    threshold: 99                                                #	Percentile used to select edges for the circular graph.
+    gap: 0.25                                                    #	Spacing between hemispheres in the circular graph.
+    cross_only: false                                            #	Draw only edges that cross hemispheres.
+    save_mat: true                                               #	Save the edge graph matrix preview.
+  defaults:                                                      #	Default figure rendering options.
+    dpi: 180                                                     #	Resolution in dots per inch.
+    render_dpi: 300                                              #	Resolution used when rendering saved figures.
+    show: false                                                  #	Display plot windows interactively.
+    save: true                                                   #	Write generated figures to disk.
+    log: false                                                   #	Log figure rendering and save events.
+  fc_heatmap:                                                    #	Style of per-acquisition signed FC heatmaps.
+    figsize:                                                     #	Figure width and height in inches.
     - 8
     - 8
-    square: true                                             #	Use square heatmap cells.
-    cbar: true                                               #	Show the colorbar.
-    label_fontsize_small: 10                                 #	Minimum font size for ROI tick labels.
-    label_fontsize_scale: 300                                #	Scale factor for ROI label sizing.
-  id_shuffle_hist:                                           #	Style of identification permutation histograms.
-    figsize:                                                 #	Figure width and height in inches.
+    square: true                                                 #	Use square heatmap cells.
+    cbar: true                                                   #	Show the colorbar.
+    label_fontsize_small: 10                                     #	Minimum font size for ROI tick labels.
+    label_fontsize_scale: 300                                    #	Scale factor for ROI label sizing.
+  id_shuffle_hist:                                               #	Style of identification permutation histograms.
+    figsize:                                                     #	Figure width and height in inches.
     - 5
     - 4
-    bins: 20                                                 #	Number of histogram bins.
-    range:                                                   #	Minimum and maximum of the histogram bin range.
+    bins: 20                                                     #	Number of histogram bins.
+    range:                                                       #	Minimum and maximum of the histogram bin range.
     - 0
     - 1
-    facecolor: lightgray                                     #	Fill color of histogram bars.
-    edgecolor: dimgray                                       #	Outline color of histogram bars.
-    arrow_color: red                                         #	Color of the observed accuracy annotation.
-    show_mean_arrow: true                                    #	Annotate the mean shuffled accuracy.
-    mean_arrow_color: gray                                   #	Color of the shuffled accuracy annotation.
-    xlabel: Identification Accuracy                          #	Text of the horizontal axis label.
-    ylabel: Count                                            #	Text of the vertical axis label.
-    title: Shuffle Distribution                              #	Figure title.
-    arrow_text_format: real={:.4f}                           #	Template for displaying observed accuracy.
-    mean_text_format: shuffle={:.4f}                         #	Template for displaying mean shuffled accuracy.
-  id_paired:                                                 #	Style of paired group and individual plots.
-    figsize:                                                 #	Figure width and height in inches.
+    facecolor: lightgray                                         #	Fill color of histogram bars.
+    edgecolor: dimgray                                           #	Outline color of histogram bars.
+    arrow_color: red                                             #	Color of the observed accuracy annotation.
+    show_mean_arrow: true                                        #	Annotate the mean shuffled accuracy.
+    mean_arrow_color: gray                                       #	Color of the shuffled accuracy annotation.
+    xlabel: Identification Accuracy                              #	Text of the horizontal axis label.
+    ylabel: Count                                                #	Text of the vertical axis label.
+    title: Shuffle Distribution                                  #	Figure title.
+    arrow_text_format: real={:.4f}                               #	Template for displaying observed accuracy.
+    mean_text_format: shuffle={:.4f}                             #	Template for displaying mean shuffled accuracy.
+  id_paired:                                                     #	Style of paired group and individual plots.
+    figsize:                                                     #	Figure width and height in inches.
     - 4
     - 6
-    linecolor: gray                                          #	Color of the lines linking paired observations.
-    alpha: 0.5                                               #	Opacity of the plotted observations.
-    linewidth: 1.5                                           #	Width of observation lines.
-    meancolor: red                                           #	Color used to draw the mean.
-    meanwidth: 3                                             #	Width of the mean line.
-    xticklabels:                                             #	Labels for positions on the horizontal axis.
+    linecolor: gray                                              #	Color of the lines linking paired observations.
+    alpha: 0.5                                                   #	Opacity of the plotted observations.
+    linewidth: 1.5                                               #	Width of observation lines.
+    meancolor: red                                               #	Color used to draw the mean.
+    meanwidth: 3                                                 #	Width of the mean line.
+    xticklabels:                                                 #	Labels for positions on the horizontal axis.
     - Group
     - Individual
-    ylabel: Network Similarity                               #	Text of the vertical axis label.
-  id_similarity_matrix:                                      #	Style of combined identification similarity matrices.
-    figsize:                                                 #	Figure width and height in inches.
+    ylabel: Network Similarity                                   #	Text of the vertical axis label.
+  id_similarity_matrix:                                          #	Style of combined identification similarity matrices.
+    figsize:                                                     #	Figure width and height in inches.
     - 6
     - 6
-    title: Similarity Matrix                                 #	Figure title.
-    cbar: true                                               #	Show the colorbar.
-    axis: true                                               #	Show the matrix axes.
-    tick_fontsize: 10                                        #	Font size for axis tick labels.
-  edge_phi:                                                  #	Circular graph style for phi edge contributions.
-    node_color_mode: fixed                                   #	Rule for coloring graph nodes.
-    edge_color_mode: fixed                                   #	Rule for coloring graph edges.
-    edge_fixed_color: blue                                   #	Edge color when fixed coloring is selected.
-    edge_width_mode: fixed                                   #	Rule for assigning edge widths.
-  edge_dp:                                                   #	Circular graph style for dp edge contributions.
-    node_color_mode: fixed                                   #	Rule for coloring graph nodes.
-    edge_color_mode: fixed                                   #	Rule for coloring graph edges.
-    edge_fixed_color: red                                    #	Edge color when fixed coloring is selected.
-    edge_width_mode: fixed                                   #	Rule for assigning edge widths.
-  stat_box:                                                  #	Common style for statistical box plots.
-    figsize:                                                 #	Figure width and height in inches.
+    title: Similarity Matrix                                     #	Figure title.
+    cbar: true                                                   #	Show the colorbar.
+    axis: true                                                   #	Show the matrix axes.
+    tick_fontsize: 10                                            #	Font size for axis tick labels.
+  edge_phi:                                                      #	Circular graph style for phi edge contributions.
+    node_color_mode: fixed                                       #	Rule for coloring graph nodes.
+    edge_color_mode: fixed                                       #	Rule for coloring graph edges.
+    edge_fixed_color: blue                                       #	Edge color when fixed coloring is selected.
+    edge_width_mode: fixed                                       #	Rule for assigning edge widths.
+  edge_dp:                                                       #	Circular graph style for dp edge contributions.
+    node_color_mode: fixed                                       #	Rule for coloring graph nodes.
+    edge_color_mode: fixed                                       #	Rule for coloring graph edges.
+    edge_fixed_color: red                                        #	Edge color when fixed coloring is selected.
+    edge_width_mode: fixed                                       #	Rule for assigning edge widths.
+  stat_box:                                                      #	Common style for statistical box plots.
+    figsize:                                                     #	Figure width and height in inches.
     - 4
     - 4
-    box_width: 0.1                                           #	Width of each box.
-    box_alpha: 0.7                                           #	Opacity of each box fill.
-    box_color: null                                          #	Box fill color when explicitly set.
-    showfliers: false                                        #	Show observations outside the whiskers.
-    fontsize: 7                                              #	Base font size in points.
-    rotation: 0                                              #	Rotation angle of tick labels in degrees.
-    grid: false                                              #	Show background grid lines.
-    hide_ns: true                                            #	Hide non-significant statistical annotations.
-  stat_rel_effect_box:                                       #	Overrides for relative effect box plots.
-    show_legend: false                                       #	Show the plot legend.
-    show_sub_label: true                                     #	Show labels for the plotted subgroups.
-  stat_group_indiv_box:                                      #	Overrides for paired group and individual box plots.
-    group_gap: 2                                             #	Spacing between groups of boxes.
-  stat_mean_error:                                           #	Style of mean and uncertainty plots.
-    figsize:                                                 #	Figure width and height in inches.
+    box_width: 0.1                                               #	Width of each box.
+    box_alpha: 0.7                                               #	Opacity of each box fill.
+    box_color: null                                              #	Box fill color when explicitly set.
+    showfliers: false                                            #	Show observations outside the whiskers.
+    fontsize: 7                                                  #	Base font size in points.
+    rotation: 0                                                  #	Rotation angle of tick labels in degrees.
+    grid: false                                                  #	Show background grid lines.
+    hide_ns: true                                                #	Hide non-significant statistical annotations.
+  stat_rel_effect_box:                                           #	Overrides for relative effect box plots.
+    show_legend: false                                           #	Show the plot legend.
+    show_sub_label: true                                         #	Show labels for the plotted subgroups.
+  stat_group_indiv_box:                                          #	Overrides for paired group and individual box plots.
+    group_gap: 2                                                 #	Spacing between groups of boxes.
+  stat_mean_error:                                               #	Style of mean and uncertainty plots.
+    figsize:                                                     #	Figure width and height in inches.
     - 8
     - 6
-    error_type: sem                                          #	Statistic used for the uncertainty display.
-    use_fill: false                                          #	Use a shaded uncertainty band.
-    labels:                                                  #	Display labels for the plotted series.
+    error_type: sem                                              #	Statistic used for the uncertainty display.
+    use_fill: false                                              #	Use a shaded uncertainty band.
+    labels:                                                      #	Display labels for the plotted series.
     - Group
     - Individual
-    show_diff: true                                          #	Display the difference between plotted series.
-    diff_mode: gradient                                      #	Representation used for the difference plot.
-    diff_ylabel: Gradient                                    #	Vertical axis label for the difference plot.
-    xlabel: Trials                                           #	Text of the horizontal axis label.
-    ylabel: Value                                            #	Text of the vertical axis label.
-  time_start: baseline                                       #	Display all saved weeks or start at the reference week.
-  display_cohorts:                                           #	Cohorts included in saved comparison plots when specified.
+    show_diff: true                                              #	Display the difference between plotted series.
+    diff_mode: gradient                                          #	Representation used for the difference plot.
+    diff_ylabel: Gradient                                        #	Vertical axis label for the difference plot.
+    xlabel: Trials                                               #	Text of the horizontal axis label.
+    ylabel: Value                                                #	Text of the vertical axis label.
+  time_start: baseline                                           #	Display all saved weeks or start at the reference week.
+  display_cohorts:                                               #	Cohorts included in saved comparison plots when specified.
   - available_week
-pairwise:                                                    #	Week-pair selections and phase definitions.
-  phases:                                                    #	Grouping of acquisition weeks into named phases.
-    onset:                                                   #	Weeks assigned to the onset phase.
+pairwise:                                                        #	Week-pair selections and phase definitions.
+  phases:                                                        #	Grouping of acquisition weeks into named phases.
+    onset:                                                       #	Weeks assigned to the onset phase.
     - 00w
     - 01w
     - 02w
-    baseline:                                                #	Weeks assigned to the baseline phase.
+    baseline:                                                    #	Weeks assigned to the baseline phase.
     - 03w
-    early:                                                   #	Weeks assigned to the early phase.
+    early:                                                       #	Weeks assigned to the early phase.
     - 04w
     - 05w
     - 06w
-    middle:                                                  #	Weeks assigned to the middle phase.
+    middle:                                                      #	Weeks assigned to the middle phase.
     - 07w
     - 08w
     - 09w
     - 10w
-    late:                                                    #	Weeks assigned to the late phase.
+    late:                                                        #	Weeks assigned to the late phase.
     - 11w
     - 12w
     - 13w
-  phase_comparisons:                                         #	Ordered phase pairs used in pairwise comparisons.
+  phase_comparisons:                                             #	Ordered phase pairs used in pairwise comparisons.
   - - baseline
     - onset
   - - baseline
@@ -193,48 +193,53 @@ pairwise:                                                    #	Week-pair selecti
     - middle
   - - middle
     - late
-  window_interpretation: N_aligned_observation_windows       #	Label describing the meaning of the observation windows.
-  summary_phases:                                            #	Phases included in phase summaries.
+  window_interpretation: N_aligned_observation_windows           #	Label describing the meaning of the observation windows.
+  summary_phases:                                                #	Phases included in phase summaries.
   - baseline
   - early
   - middle
   - late
-descriptive:                                                 #	Descriptive analysis and shared SeedFC selection settings.
-  reference_week: 03w                                        #	Reference acquisition week used for baseline comparisons.
-  network_mapping:                                           #	Mapping from explicit ROI labels to named networks.
-    MOP_L: Motor                                             #	Network assigned to MOP_L.
-    MOP_R: Motor                                             #	Network assigned to MOP_R.
-    MOS_L: Motor                                             #	Network assigned to MOS_L.
-    MOS_R: Motor                                             #	Network assigned to MOS_R.
-    SSP_L: Somatosensory                                     #	Network assigned to SSP_L.
-    SSP_R: Somatosensory                                     #	Network assigned to SSP_R.
-    VIS_L: Visual                                            #	Network assigned to VIS_L.
-    VIS_R: Visual                                            #	Network assigned to VIS_R.
-    RSP_L: DefaultMode                                       #	Network assigned to RSP_L.
-    RSP_R: DefaultMode                                       #	Network assigned to RSP_R.
-    ACA_L: DefaultMode                                       #	Network assigned to ACA_L.
-    ACA_R: DefaultMode                                       #	Network assigned to ACA_R.
-    PL_L: DefaultMode                                        #	Network assigned to PL_L.
-    PL_R: DefaultMode                                        #	Network assigned to PL_R.
-plugins:                                                     #	Optional source plugin configuration.
-  seedfc:                                                    #	SeedFC input adapter.
-    enabled: true                                            #	Enable this plugin or postprocessing task.
-    options:                                                 #	Settings passed to the source adapter.
-      branch: noGSR                                          #	Name of the input processing branch.
-      series: Aseries                                        #	Series label used to identify the dataset and reports.
-      source: ../data/SeedFC_001_008/organized_original_ids  #	Root folder of organized SeedFC recordings.
-      partitions:                                            #	SeedFC partitions and their ROI exclusion rules.
-        FourNetworks:                                        #	ROI selection for the FourNetworks partition.
-          exclude:                                           #	ROI labels omitted from the partition.
-          - AUD_L
-          - AUD_R
-          - TEA_L
-          - TEA_R
-          - FRP_L
-          - FRP_R
-          - SSS_L
-          - SSS_R
-seedfc_supplement:                                           #	SeedFC metrics calculated after the complete batch.
-  enabled: true                                              #	Enable this plugin or postprocessing task.
-  cohorts:                                                   #	Cohort policies to calculate for supplementary metrics.
-  - available_pair
+descriptive:                                                     #	Descriptive analysis and shared SeedFC selection settings.
+  reference_week: 03w                                            #	Reference acquisition week used for baseline comparisons.
+  network_mapping:                                               #	Mapping from explicit ROI labels to named networks.
+    MOP_L: Motor                                                 #	Network assigned to MOP_L.
+    MOP_R: Motor                                                 #	Network assigned to MOP_R.
+    MOS_L: Motor                                                 #	Network assigned to MOS_L.
+    MOS_R: Motor                                                 #	Network assigned to MOS_R.
+    SSP_L: Somatosensory                                         #	Network assigned to SSP_L.
+    SSP_R: Somatosensory                                         #	Network assigned to SSP_R.
+    VIS_L: Visual                                                #	Network assigned to VIS_L.
+    VIS_R: Visual                                                #	Network assigned to VIS_R.
+    RSP_L: DefaultMode                                           #	Network assigned to RSP_L.
+    RSP_R: DefaultMode                                           #	Network assigned to RSP_R.
+    ACA_L: DefaultMode                                           #	Network assigned to ACA_L.
+    ACA_R: DefaultMode                                           #	Network assigned to ACA_R.
+    PL_L: DefaultMode                                            #	Network assigned to PL_L.
+    PL_R: DefaultMode                                            #	Network assigned to PL_R.
+plugins:                                                         #	Source and function plugins.
+  source:                                                        #	Data source selection.
+    seedfc:                                                      #	SeedFC input adapter.
+      enabled: true                                              #	Enable this plugin or postprocessing task.
+      options:                                                   #	Settings passed to the source adapter.
+        branch: noGSR                                            #	Name of the input processing branch.
+        series: Aseries                                          #	Series label used to identify the dataset and reports.
+        source: ../data/SeedFC_001_008/organized_original_ids    #	Root folder of organized SeedFC recordings.
+        partitions:                                              #	SeedFC partitions and their ROI exclusion rules.
+          FourNetworks:                                          #	ROI selection for the FourNetworks partition.
+            exclude:                                             #	ROI labels omitted from the partition.
+            - AUD_L
+            - AUD_R
+            - TEA_L
+            - TEA_R
+            - FRP_L
+            - FRP_R
+            - SSS_L
+            - SSS_R
+  function:                                                      #	Optional analysis functions.
+    geometry:                                                    #	High-dimensional analysis plugin.
+      enabled: false                                             #	Run high-dimensional geometry and inference.
+    seedfc_supplement:                                           #	Supplementary SeedFC metrics and reports.
+      enabled: true                                              #	Enable this plugin or postprocessing task.
+      options:                                                   #	Supplementary metrics and matrix options.
+        cohorts:                                                 #	Cohort policies to calculate for supplementary metrics.
+        - available_pair

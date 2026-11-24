@@ -14,6 +14,11 @@ from srcs.core.runtime import numerical_stage
 OPTION_KEYS = ("inference", "pairwise",)
 
 
+def validate(ctx):
+    if not (Path(ctx.output_path) / "results/geometry/index.json").is_file():
+        raise FileNotFoundError("Run geometry first")
+
+
 @numerical_stage("inference", OPTION_KEYS)
 def run(ctx):
     folder = Path(ctx.output_dir("results","inference"))
