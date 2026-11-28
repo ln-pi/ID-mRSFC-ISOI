@@ -5,36 +5,61 @@ import json
 
 from srcs.utils.provenance import code_identity, sha256
 from srcs.utils.storage import save_json
-from srcs.core.artifacts import publish
+from srcs.core.artifacts import artifact_entries, artifact_path, publish
 from srcs.core.contracts import StageResult
 from srcs.core.identity import digest
 from srcs.workflow import REPORT_SECTIONS
 
 
-def redraw_saved(folder, section, dry_run=False, visualization_config=None, functions=()):
+def redraw_saved(folder, section, dry_run=False, visualization_config=None, functions=(), *, output_root=None):
     from argparse import Namespace
-    from srcs.utils.config import RunContext
-    from srcs.utils.logger import setup_logger
-    metadata = json.loads((folder/"metadata/analysis_config.json").read_text(encoding="utf-8"))
-    from srcs.utils.config import PROJECT_ROOT, load_config
-    from uuid import uuid4
-    defaults = load_config(PROJECT_ROOT / "configs/default.yaml")
-    output_root = (PROJECT_ROOT / defaults["paths"]["output"]).resolve()
-    target = output_root / "_redraw" / (folder.name + "_" + uuid4().hex[:8])
+    from srcs.core.artifacts import write_json
+    from srcs.utils.config import PROJECT_ROOT, RunContext, load_config
+    from srcs.utils.logger import setup_logger, close_log_file
     from srcs.utils.visualization import merge, settings, validate
+    from srcs.workflow.batch import timestamp
+    from srcs.workflow.batch_layout import BatchLayout, dataset_label, saved_scopes
+    from srcs.workflow.plugins import enable_functions
+
+    folder = Path(folder).resolve()
+    metadata = json.loads((folder / "metadata/analysis_config.json").read_text(encoding="utf-8"))
     config = metadata["config"]
     if visualization_config:
         override = load_config(PROJECT_ROOT / visualization_config)
         config = merge(config, {"visualization": override.get("visualization", override)})
-    from srcs.workflow.plugins import enable_functions
     config = enable_functions(config, functions)
     validate(settings(config))
-    if not dry_run:
-        logger = setup_logger(str(output_root / "_logs" / "redraw.log"))
-        args = Namespace(saved_output=folder, report_section=section, redraw_root=target)
-        run(RunContext(args, config, logger))
-        print(f"Report saved under {target}")
-    return 0
+    parent = PROJECT_ROOT / (output_root or config["paths"]["output"])
+    allocate = BatchLayout.preview if dry_run else BatchLayout.create
+    scopes = list(saved_scopes([folder], [config]))
+    # Validate the selected report section before allocating a batch.
+    args = Namespace(saved_output=folder, report_section=section)
+    ctx = RunContext(args, config, setup_logger())
+    selected_sections(ctx, report_inputs(ctx))
+    layout = allocate(parent, dataset_label(scopes), f"Redraw-{section}")
+    target = layout.root / folder.name
+    print(f"Batch output: {layout.root}")
+    if dry_run:
+        return 0
+    ctx.args.redraw_root = target
+    ctx.logger = setup_logger(str(layout.logger_path("batch")))
+    summary = dict(kind="redraw", status="running", started=timestamp(), inputs=[str(folder)],
+                   series=[dict(path=folder.name, report=f"{folder.name}/report", section=section)])
+    layout.save_summary(summary)
+    try:
+        write_json(target / "metadata" / "redraw_source.json", {"source": str(folder), "config": config})
+        run(ctx)
+        summary["status"] = "complete"
+        print(f"Report saved under {target / 'report'}")
+        return 0
+    except BaseException as exc:
+        summary.update(status="interrupted" if isinstance(exc, KeyboardInterrupt) else "failed", reason=str(exc))
+        ctx.logger.error("Redraw %s: %s", summary["status"], exc)
+        raise
+    finally:
+        summary["finished"] = timestamp()
+        layout.save_summary(summary)
+        close_log_file()
 
 
 def report_inputs(ctx):
@@ -90,7 +115,17 @@ def run(ctx):
         if previous.is_file():
             previous_key = json.loads(previous.read_text(encoding="utf-8")).get("render_key")
             if previous_key != render_key:
-                ctx.args.redraw_root = Path(ctx.output_path) / "rendered_reports" / render_key
+                variants = Path(ctx.output_path) / "report_variants"
+                for index in range(1, 10000):
+                    suffix = "" if index == 1 else f"_{index:02d}"
+                    variant = variants / f"{section}{suffix}"
+                    marker = variant / "report/index.json"
+                    if not variant.exists() or (marker.is_file() and
+                            json.loads(marker.read_text(encoding="utf-8")).get("render_key") == render_key):
+                        ctx.args.redraw_root = variant
+                        break
+                else:
+                    raise ValueError(f"No free report variant for {section}")
     rendered = []
     figures, skipped = [], []
     for name in selected:
@@ -100,8 +135,9 @@ def run(ctx):
             if state["status"]!="complete":
                 skipped.append(name)
                 continue
-            for path,expected in state["cache"]["outputs"].items():
-                if not Path(path).is_file() or sha256(path)!=expected:
+            for item in artifact_entries(state["cache"]["outputs"], marker.parent):
+                path = item["path"]
+                if not path.is_file() or sha256(path) != item["sha256"]:
                     raise ValueError(f"Saved product changed: {path}; rerun {name}")
         if not inputs[name].is_file():
             skipped.append(name)
@@ -114,18 +150,25 @@ def run(ctx):
             result = import_module("srcs.visualization." + name).run(ctx)
             paths = result if isinstance(result, list) else [str(inputs[name])]
             figures.extend(sorted(Path(ctx.output_dir("report", name, create=False)).rglob("*.png")))
-        rendered.append(dict(section=name, inputs=[dict(path=p, sha256=sha256(p)) for p in paths]))
+        rendered.append(dict(section=name, inputs=[dict(path=str(p), sha256=sha256(p)) for p in paths]))
     from srcs.visualization.report import publish_report
-    publish_report(ctx,figures,rendered,skipped)
-    save_json(Path(ctx.output_dir("report")) / "index.json",
+    folder = Path(ctx.output_dir("report"))
+    internal = not getattr(ctx.args, "saved_output", None)
+    if internal:
+        rendered = [dict(item, inputs=[dict(source, path=artifact_path(source["path"], folder))
+                                       for source in item["inputs"]]) for item in rendered]
+    publish_report(ctx, figures, rendered, skipped)
+    save_json(folder / "index.json",
               dict(schema="unified_report", sections=rendered, render_key=render_key, code=code_identity()))
-    folder=Path(ctx.output_dir("report"))
     ref=publish(folder/"products.json","unified_report","unified_report",
                 [*figures,*(folder/name for name in ("report.html","report.pdf","manifest.json","index.json"))])
-    if not getattr(ctx.args,"saved_output",None):
-        save_json(Path(ctx.output_path)/"metadata/stages/report.json",
-                  dict(schema="stage_record",stage="report",status="complete",
-                       options_digest=render_key,
-                       inputs=rendered,products=[dict(name=ref.name,schema=ref.schema,path=str(ref.path),sha256=ref.sha256)]))
+    if internal:
+        stage_dir = Path(ctx.output_path) / "metadata/stages"
+        stage_inputs = [dict(item, inputs=[dict(source, path=artifact_path(folder / source["path"], stage_dir))
+                                          for source in item["inputs"]]) for item in rendered]
+        save_json(stage_dir / "report.json",
+                  dict(schema="stage_record", stage="report", status="complete", options_digest=render_key,
+                       inputs=stage_inputs, products=[dict(name=ref.name, schema=ref.schema,
+                           path=artifact_path(ref.path, stage_dir), sha256=ref.sha256)]))
     ctx.logger.info("Report sections: %s", ", ".join(r["section"] for r in rendered))
     return StageResult((ref,))

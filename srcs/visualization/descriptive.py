@@ -1,5 +1,4 @@
 """Amplitude and topology figures from verified saved products only."""
-import json
 from math import ceil
 from pathlib import Path
 
@@ -10,6 +9,8 @@ import pandas as pd
 from srcs.utils.storage import load_arrays
 from srcs.analysis.magnitude import SCHEMA
 from srcs.analysis.topology import edge_matrix
+from srcs.core.artifacts import artifact_entries, artifact_path
+from srcs.workflow.products import verified_index
 from srcs.utils.provenance import sha256
 from srcs.utils.storage import save_json
 from srcs.utils.visualization import displayed_weeks
@@ -28,15 +29,11 @@ def _heat(ax, matrix, labels, *, title, cmap, vmin, vmax):
 
 def run(ctx):
     source = Path(ctx.output_path) / "results/descriptive/index.json"
-    index = json.loads(source.read_text(encoding="utf-8"))
+    index = verified_index(source)
     if index["schema"] != SCHEMA:
         raise ValueError("Unsupported descriptive report schema")
-    paths = [source]
-    for item in index["products"] + index["files"]:
-        path = Path(item["path"])
-        if sha256(path) != item["sha256"]:
-            raise ValueError(f"Descriptive product changed: {path}; rerun descriptive")
-        paths.append(path)
+    paths = [source.resolve(), *(item["path"] for key in ("products", "files")
+                                 for item in artifact_entries(index[key], source.parent))]
     folder = Path(ctx.output_dir("report", "descriptive"))
     regions = pd.read_csv(source.parent / "regional.csv")
     subjects = pd.read_csv(source.parent / "subjects.csv")
@@ -187,7 +184,7 @@ def run(ctx):
             fig.suptitle(f"{atlas} | {view} | {meta['network_kind']} | available mice")
             save(fig, f"regions_direction_{prefix}")
     save_json(folder / "index.json", dict(schema=SCHEMA, files=written, examples=examples,
-        source=str(source), source_sha256=sha256(source),
+        source=artifact_path(source, folder), source_sha256=sha256(source),
         note="Example is descriptive, not an outlier test; arrays/tables contain all weeks, mice and cohorts"))
     save_json(folder / "color_scales.json", scales)
     ctx.logger.info("Descriptive report: %s figures", len(written))

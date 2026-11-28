@@ -76,16 +76,26 @@ def main(argv=None):
     parser.add_argument('--dry-run', action='store_true')
     parser.add_argument('--import-fc')
     parser.add_argument('--tag')
+    parser.add_argument('--series-output', type=Path, required=True)
+    parser.add_argument('--log-file', type=Path)
     parser.add_argument('--report-section', default='all')
     parser.add_argument('--function', action='append', default=[])
     args = parser.parse_args(argv)
     ctx = load_context(args.config, create_dirs=False, enabled_functions=args.function)
     ctx.args.tag = args.tag
+    ctx.args.series_output = args.series_output.resolve()
     if args.dry_run:
         return execute(ctx,args,parser)
+    from srcs.utils.logger import setup_logger
+    if args.log_file is not None:
+        setup_logger(str(args.log_file))
     from srcs.core.runtime import exclusive_run
-    with exclusive_run(Path(ctx.output_path)/"metadata/workflow.lock"):
-        return execute(ctx,args,parser)
+    try:
+        with exclusive_run(Path(ctx.output_path) / "metadata/workflow.lock"):
+            return execute(ctx, args, parser)
+    except Exception:
+        ctx.logger.exception("Stage failed: %s", args.stage or args.start or "default")
+        raise
 
 
 def execute(ctx,args,parser):

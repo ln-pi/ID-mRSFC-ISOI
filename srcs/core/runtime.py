@@ -3,7 +3,7 @@ from contextlib import contextmanager
 import os
 from functools import wraps
 
-from .artifacts import sha256
+from .artifacts import artifact_entries, sha256
 from .identity import digest
 
 
@@ -46,14 +46,14 @@ def cache_key(code, options, inputs):
     return digest({"code": code, "options": options, "inputs": inputs})
 
 
-def reusable(record, key):
+def reusable(record, key, anchor=None):
     if record.get("status") != "complete" or record.get("cache", {}).get("key") != key:
         return False
     if not record.get("products"):
         return False
     outputs = record["cache"].get("outputs", {})
-    return bool(outputs) and all(Path(path).is_file() and sha256(path) == checksum
-                                 for path, checksum in outputs.items())
+    return bool(outputs) and all(item["path"].is_file() and sha256(item["path"]) == item["sha256"]
+                                 for item in artifact_entries(outputs, anchor or Path.cwd()))
 
 
 def select_steps(steps, *, stage=None, start=None):

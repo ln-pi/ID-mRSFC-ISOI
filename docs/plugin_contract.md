@@ -22,7 +22,7 @@ FourNetworks 保留 Motor（MOP、MOS）、Somatosensory（SSP）、Visual（VIS
 
 `plugins/source/<id>/plugin.yaml` 定义 FC 来源。单次运行可选择一个来源，空配置走原生 FC。来源声明输入验证入口和参与数据身份的数值源码。 SeedFC 启用位置为 `plugins.source.seedfc.enabled`，旧版 `plugins.seedfc` 配置继续可读。
 
-`plugins/function/<id>/plugin.yaml` 定义分析或绘图能力。每个功能单独启用，可声明数值阶段、依赖阶段、产物、报告分节和两系列比较入口，或登记批次收尾任务。功能阶段使用同一份已校验的 edge store 和已发布的结果。功能开关属于阶段配置，不进入 FC 或 edge store 数据身份。
+`plugins/function/<id>/plugin.yaml` 定义分析或绘图能力。每个功能单独启用，可声明数值阶段、依赖阶段、产物、报告分节和两系列比较入口，或登记批次收尾任务。功能阶段使用同一份已校验的 edge store 和已发布的结果。功能开关属于阶段配置，不进入 FC 或 edge store 数据身份。批次协调器为 `comparison.run` 和 `batch.run` 提供 `destination`：跨系列产物写入批次的 `compare/`，仅一个系列的批次收尾则写入该系列根目录。插件在指定根下使用 `results/<功能>/`、`report/<功能>/` 和 `metadata/`，不得自行创建输出根级目录。
 
 ```yaml
 plugins:

@@ -10,9 +10,11 @@ import argparse
 import base64
 import html
 import json
+from datetime import datetime, timezone
 from pathlib import Path
-from tempfile import mkdtemp
+from shutil import copy2
 from types import SimpleNamespace
+from urllib.parse import quote
 import inspect
 import sys
 
@@ -29,9 +31,10 @@ import pandas as pd
 
 from srcs.analysis.magnitude import select_views
 from srcs.analysis.topology import edge_layout
-from srcs.core.artifacts import sha256 as sha, write_json
+from srcs.core.artifacts import artifact_path, resolve_artifact, sha256 as sha, write_json
 from srcs.core.identity import digest
 from srcs.core.runtime import exclusive_run
+from srcs.core.staging import staging_directory
 from srcs.utils.config import PROJECT_ROOT, load_config
 from srcs.utils.visualization import displayed_weeks, merge, saved_config, settings, validate
 from srcs.visualization.scales import resolve
@@ -331,59 +334,104 @@ NUMERIC_OPTIONS = ("reference", "cohorts", "cv_mean_threshold", "numerical_toler
 
 
 def verified_cache(folder):
-    manifest = folder / "manifest.json"
     try:
-        record = json.loads(manifest.read_text(encoding="utf-8"))
+        record = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
         if record["status"] == "complete" and record["outputs"] and all(
-                (folder / path).is_file() and sha(folder / path) == checksum
-                for path, checksum in record["outputs"].items()):
+                sha(resolve_artifact(path, folder)) == checksum for path, checksum in record["outputs"].items()):
             return record
-    except (OSError, ValueError, KeyError, TypeError):
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
         pass
     return None
 
 
 def publish_cache(pending, target, **metadata):
     write_json(pending / "manifest.json", dict(status="complete", **metadata,
-        outputs={str(file.relative_to(pending)): sha(file) for file in pending.rglob("*") if file.is_file()}))
-    # A corrupt previous generation is retained separately for inspection.
+        outputs={artifact_path(file, pending): sha(file) for file in pending.rglob("*") if file.is_file()}))
+    old = pending.with_name("previous")
     if target.exists():
-        from uuid import uuid4
-        target.rename(target.with_name(f".{target.name}.{uuid4().hex}.invalid"))
-    pending.rename(target)
+        target.rename(old)
+    try:
+        pending.rename(target)
+    except OSError:
+        if old.exists():
+            old.rename(target)
+        raise
 
 
-def calculate(sources, cfg, destination, *, reuse, require_existing=False):
-    # Rendering edits must not invalidate numerical results.
+def calculate(sources, cfg, target, *, batch_root, lock, numeric_source=None):
+    # Keep numerical identity independent of output paths and rendering settings.
     numerical_code = digest([inspect.getsource(func) for func in
         (load_output, select_views, edge_layout, compute, correlation, matching, paired_icc)])
     inputs = {path: checksum for source in sources for path, checksum in source["inputs"].items()}
+    input_hashes = [{Path(path).relative_to(source["root"]).as_posix(): checksum
+                     for path, checksum in source["inputs"].items()} for source in sources]
     numeric_options = {key: cfg[key] for key in NUMERIC_OPTIONS}
     selection = [dict(series=s["series"], weeks=s["meta"]["week_ids"], views=s["views"],
                       mapping=s["mapping"], regions=[(level, name) for level, name, _ in s["groups"]])
                  for s in sources]
-    key = digest([inputs, numeric_options, selection, numerical_code])
-    target = destination / "numeric" / key
-    with exclusive_run(target.parent / f"{key}.lock"):
-        cached = verified_cache(target) if reuse else None
-        if cached:
-            return target, cached, True
-        if require_existing:
-            raise ValueError("No verified numerical results for these inputs and analysis settings")
-        tables = {name: [] for name in TABLE_NAMES}
-        arrays, audit = {}, []
-        for source in sources:
-            compute(source, cfg, tables, arrays, audit)
-        pending = Path(mkdtemp(prefix=f".{key}.", dir=target.parent))
-        for name, rows in tables.items():
-            pd.DataFrame(rows).to_csv(pending / f"{name}.csv", index=False)
-        np.savez_compressed(pending / "matrices.npz", **arrays)
-        json_write(pending / "cohorts.json", audit)
-        if any(sha(path) != checksum for path, checksum in inputs.items()):
-            raise RuntimeError("SeedFC inputs changed during supplementary calculation")
-        publish_cache(pending, target, inputs=inputs, options=numeric_options,
-                      selection=selection, numerical_code=numerical_code)
-        return target, verified_cache(target), False
+    key = digest([input_hashes, numeric_options, selection, numerical_code])
+    expected_files = {f"{name}.csv" for name in TABLE_NAMES} | {"matrices.npz", "cohorts.json"}
+
+    def verified_numeric(folder, *, required=False):
+        def mismatch(reason):
+            if required:
+                raise ValueError(f"Cannot redraw from {folder}: {reason}")
+            return None
+
+        record = verified_cache(folder)
+        if not record:
+            return mismatch("the numerical manifest or its products did not pass checksum verification")
+        if record.get("numerical_code") != numerical_code:
+            return mismatch("the numerical implementation differs")
+        if digest(record.get("options")) != digest(numeric_options) or digest(record.get("selection")) != digest(selection):
+            return mismatch("the analysis settings or selected series, weeks, views or regions differ")
+        # v1 caches included absolute input paths; compare their roles and content, not their location.
+        record_key = record.get("cache_key")
+        if record_key is None:
+            if sorted((Path(p).name, h) for p, h in record.get("inputs", {}).items()) != sorted(
+                    (Path(p).name, h) for p, h in inputs.items()):
+                return mismatch("the saved edge-store or data-identity checksums differ")
+        elif record_key != key:
+            return mismatch("the saved edge-store or data-identity checksums differ")
+        files = {resolve_artifact(name, folder): checksum for name, checksum in record["outputs"].items()}
+        if set(files) != {folder / name for name in expected_files}:
+            return mismatch("the recorded set of numerical files is incomplete or unexpected")
+        return record, files
+
+    with exclusive_run(lock):
+        cached = verified_numeric(target)
+        if numeric_source is None and cached:
+            return target, cached[0], True
+        imported = verified_numeric(numeric_source, required=True) if numeric_source is not None else None
+        if numeric_source == target:
+            return target, imported[0], True
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with staging_directory(target.parent, "supplement") as staging:
+            pending = staging / "results"
+            pending.mkdir()
+            if imported:
+                for source, expected in imported[1].items():
+                    copied = pending / source.name
+                    copy2(source, copied)
+                    if sha(copied) != expected:
+                        raise RuntimeError(f"Numerical source changed during import: {source}")
+            else:
+                tables = {name: [] for name in TABLE_NAMES}
+                arrays, audit = {}, []
+                for source in sources:
+                    compute(source, cfg, tables, arrays, audit)
+                for name, rows in tables.items():
+                    pd.DataFrame(rows).to_csv(pending / f"{name}.csv", index=False)
+                np.savez_compressed(pending / "matrices.npz", **arrays)
+                json_write(pending / "cohorts.json", audit)
+            if any(sha(path) != checksum for path, checksum in inputs.items()):
+                raise RuntimeError("SeedFC inputs changed during supplementary calculation")
+            provenance = {"numeric_source": str(numeric_source)} if imported else {}
+            input_refs = {artifact_path(p, target) if Path(p).is_relative_to(batch_root) else p: h
+                          for p, h in inputs.items()}
+            publish_cache(pending, target, cache_key=key, inputs=input_refs, options=numeric_options,
+                          selection=selection, numerical_code=numerical_code, **provenance)
+        return target, verified_cache(target), bool(imported)
 
 
 def read_table(path):
@@ -393,29 +441,32 @@ def read_table(path):
         return pd.DataFrame()
 
 
-def render_report(sources, cfg, viz, numeric, record, destination):
+def render_report(sources, cfg, viz, numeric, record, out, *, lock):
     from srcs.visualization import scales
     render_code = digest([inspect.getsource(func) for func in
                           (render, render_report, write_report, displayed_weeks, resolve, scales.step, scales.palette)])
     presentation = dict(visualization=viz, matrix_weeks=cfg["matrix_weeks"])
-    key = digest([record, presentation, render_code])
-    out = destination / "reports" / key
-    with exclusive_run(out.parent / f"{key}.lock"):
-        if verified_cache(out):
+    key = digest([record.get("cache_key"), record["outputs"], presentation, render_code])
+    with exclusive_run(lock):
+        cached = verified_cache(out)
+        if cached and cached.get("cache_key") == key:
             return out, True
-        # Render under the lock. Relative links stay valid after publication.
-        pending = Path(mkdtemp(prefix=f".{key}.", dir=out.parent))
-        tables = {name: read_table(numeric / f"{name}.csv") for name in TABLE_NAMES}
-        with np.load(numeric / "matrices.npz", allow_pickle=False) as arrays, plt.rc_context():
-            files = render(sources, cfg, tables, arrays, pending, viz)
-        write_report(pending, files, tables, numeric, cfg, viz)
-        json_write(pending / "effective_config.json", {**cfg, **presentation})
-        publish_cache(pending, out, numeric=str(numeric), inputs=record["inputs"],
-                      presentation=presentation, render_code=render_code)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with staging_directory(out.parent, "supplement") as staging:
+            pending = staging / "report"
+            pending.mkdir()
+            tables = {name: read_table(numeric / f"{name}.csv") for name in TABLE_NAMES}
+            with np.load(numeric / "matrices.npz", allow_pickle=False) as arrays, plt.rc_context():
+                files = render(sources, cfg, tables, arrays, pending, viz)
+            write_report(pending, files, tables, numeric, cfg, viz, report_root=out)
+            json_write(pending / "effective_config.json", {**cfg, **presentation})
+            publish_cache(pending, out, cache_key=key, numeric=artifact_path(numeric, out),
+                          numeric_manifest_sha256=sha(numeric / "manifest.json"),
+                          presentation=presentation, render_code=render_code)
     return out, False
 
 
-def write_report(out, files, tables, numeric, cfg, viz):
+def write_report(out, files, tables, numeric, cfg, viz, *, report_root):
     overview = tables["fingerprint"]
     if not overview.empty:
         weeks = displayed_weeks(cfg["weeks"], viz, cfg["reference"])
@@ -442,10 +493,19 @@ are retained in numeric/matrices.npz. The report previews the configured matrix 
     body.append('</ul>')
     for i,p in enumerate(files):
         body.append(f'<figure id="fig{i}"><figcaption>{html.escape(p.stem)}</figcaption><a href="{p.relative_to(out).as_posix()}"><img loading="lazy" src="data:image/png;base64,{base64.b64encode(p.read_bytes()).decode()}"></a></figure>')
-    body.append('<h2>数值下载</h2><ul>'+''.join(f'<li><a href="{p.as_uri()}">{p.name}</a></li>' for p in numeric.iterdir())+'</ul>')
+    links = [(quote(artifact_path(p, report_root)), html.escape(p.name))
+             for p in sorted(numeric.iterdir()) if p.is_file()]
+    body.append('<h2>数值下载</h2><ul>' + ''.join(
+        f'<li><a href="{href}">{name}</a></li>' for href, name in links) + '</ul>')
     (out/'report.html').write_text(''.join(body),encoding='utf-8')
-def run_outputs(outputs, atlas, *, configs=None, overrides=None, reference=None, destination=None, redraw=False):
+def run_outputs(outputs, atlas, *, destination, configs=None, overrides=None, reference=None,
+                redraw=False, numeric_source=None):
     from srcs.workflow.plugins import function_options
+
+    if Path(atlas).name != atlas or atlas in ("", ".", "..") or "\\" in atlas:
+        raise ValueError(f"Invalid atlas directory: {atlas}")
+    if redraw != (numeric_source is not None):
+        raise ValueError("Redraw requires an explicit numeric source; use --redraw with --numeric-source")
     defaults = function_options(load_config(PROJECT_ROOT / "configs/default.yaml"), "seedfc_supplement")
     overrides = overrides or {}
     overrides = {key: overrides[key] for key in ("visualization", "descriptive", "seedfc_supplement", "plugins")
@@ -506,35 +566,76 @@ def run_outputs(outputs, atlas, *, configs=None, overrides=None, reference=None,
         if cfg["reference"] not in source["meta"]["week_ids"]:
             raise ValueError("Set descriptive.reference_week or --reference to an analysis week")
     cfg["weeks"] = first["meta"]["week_ids"]
-    root = Path(destination or (Path(configs[0]["paths"]["output"]) / "_supplement"))
-    if not root.is_absolute():
-        root = PROJECT_ROOT / root
-    if redraw:
-        # Enforce a verified numeric hit inside the same lock as regular calculations.
-        numeric, record, reused = calculate(sources, cfg, root, reuse=True, require_existing=True)
-    else:
-        numeric, record, reused = calculate(sources, cfg, root, reuse=True)
-    report, reused_report = render_report(sources, cfg, viz, numeric, record, root)
+    root = (PROJECT_ROOT / destination).resolve()
+    numeric = root / "results/seedfc_supplement" / atlas
+    report = root / "report/seedfc_supplement" / atlas
+    metadata = root / "metadata/seedfc_supplement"
+    numeric_source = Path(numeric_source).resolve() if numeric_source is not None else None
+    numeric, record, reused = calculate(sources, cfg, numeric, batch_root=root.parent,
+                                        lock=metadata / f"{atlas}-numeric.lock", numeric_source=numeric_source)
+    report, reused_report = render_report(sources, cfg, viz, numeric, record, report,
+                                          lock=metadata / f"{atlas}-report.lock")
     return dict(atlas=atlas, path=str(report), numeric=str(numeric), reused_numeric=reused,
                 reused_report=reused_report, manifest_sha256=sha(report / "manifest.json"))
 
 
-def run_batch(outputs, contexts):
+def run_batch(outputs, contexts, *, destination: Path):
     atlases = contexts[0].atlases
     if any(ctx.atlases != atlases for ctx in contexts[1:]):
         raise ValueError("Supplementary reports require identical configured atlas partitions")
     for atlas in atlases:
         yield run_outputs(outputs, "_".join(atlas), configs=[ctx.config for ctx in contexts],
-                          destination=Path(contexts[0].output_root) / "_supplement")
+                          destination=destination)
 
 
 def run(args):
+    from srcs.utils.logger import close_log_file, setup_logger
+    from srcs.workflow.batch import is_an_pair
+    from srcs.workflow.batch_layout import BatchLayout, dataset_label, series_input
+
+    outputs = [series_input(PROJECT_ROOT, path) for path in args.outputs]
+    if len(outputs) not in (1, 2):
+        raise ValueError("Supply one saved series, or two saved series for a joint supplement")
+    redraw = getattr(args, "redraw", False)
+    numeric_source = getattr(args, "numeric_source", None)
+    if redraw != (numeric_source is not None):
+        raise ValueError("Use --redraw and --numeric-source together")
+    configs = [saved_config(output) for output in outputs]
+    scopes = [json.loads((output / "metadata/data_identity.json").read_text(encoding="utf-8"))["scope"]
+              for output in outputs]
+    if len(scopes) == 2 and not is_an_pair(scopes):
+        raise ValueError("A joint supplement requires Aseries and Nseries from the same processing branch")
+    data_label = dataset_label(scopes)
     overrides = load_config(args.config) if args.config else None
-    atlas = args.atlas
-    if atlas is None:
-        atlas = "_".join(saved_config(args.outputs[0])["variables"]["Atlas"][0])
-    result = run_outputs(args.outputs, atlas, overrides=overrides, reference=args.reference,
-                         destination=args.destination, redraw=getattr(args, "redraw", False))
+    atlas = args.atlas or "_".join(configs[0]["variables"]["Atlas"][0])
+    output_root = PROJECT_ROOT / (args.destination or configs[0]["paths"]["output"])
+    task = "Supplement-Redraw" if redraw else "Supplement"
+    layout = BatchLayout.create(output_root.resolve(), data_label, task)
+    destination = layout.root / ("compare" if len(outputs) == 2 else outputs[0].name)
+    summary = dict(kind="seedfc_supplement", task=task, status="running", inputs=[str(path) for path in outputs],
+                   atlas=atlas, started=datetime.now(timezone.utc).isoformat())
+    if numeric_source is not None:
+        numeric_source = Path(numeric_source).resolve()
+        summary["numeric_source"] = str(numeric_source)
+    layout.save_summary(summary)
+    logger = setup_logger(str(layout.logger_path("batch")))
+    try:
+        logger.info("SeedFC supplement started (%s): %s", atlas, task)
+        result = run_outputs(outputs, atlas, configs=configs, overrides=overrides, reference=args.reference,
+                             destination=destination, redraw=redraw, numeric_source=numeric_source)
+        summary["status"] = "complete"
+        summary["result"] = {**result, **{key: artifact_path(result[key], layout.root) for key in ("numeric", "path")}}
+        logger.info("SeedFC supplement complete: %s", result["path"])
+    except BaseException as exc:
+        summary.update(status="interrupted" if isinstance(exc, KeyboardInterrupt) else "failed", reason=str(exc))
+        logger.exception("SeedFC supplement %s", summary["status"])
+        raise
+    finally:
+        summary["finished"] = datetime.now(timezone.utc).isoformat()
+        try:
+            layout.save_summary(summary)
+        finally:
+            close_log_file()
     print("RESULT", result["path"], flush=True)
     return Path(result["path"])
 
@@ -545,6 +646,9 @@ def main():
     parser.add_argument('--atlas', help='Atlas partition; defaults to the first configured partition')
     parser.add_argument('--reference',help='Reference label; default from effective settings')
     parser.add_argument('--config',type=Path,help='YAML containing seedfc_supplement settings')
-    parser.add_argument('--destination',type=Path,help='Root directory for cached supplementary results')
-    parser.add_argument("--redraw", action="store_true", help="Require existing verified numerical results")
+    parser.add_argument('--output-root', '--destination', dest='destination', type=Path,
+                        help='Parent output directory in which to create a fresh batch')
+    parser.add_argument('--redraw', action='store_true', help='Render without recomputing numerical results')
+    parser.add_argument('--numeric-source', type=Path,
+                        help='Existing verified numerical directory (required with --redraw)')
     run(parser.parse_args())

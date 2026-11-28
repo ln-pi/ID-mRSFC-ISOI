@@ -148,7 +148,7 @@ python run.py --configs configs/Aseries.yaml configs/Nseries.yaml
 python run.py -c configs/Aseries.yaml --stage preprocess
 ```
 
-`--stage` runs one stage. `--start` runs that stage and all subsequent stages in the order listed above. The default starts at `fc`, processing A-series followed by N-series. The PowerShell wrapper accepts the same arguments, for example `.\run.ps1 --start edges`.
+`--stage` runs one stage; `--start` runs that stage and all subsequent stages. Native workflows default to `fc`; SeedFC workflows default to `seedfc`. A new execution creates a new batch. Use `--resume-batch <batch-directory>` when a selected stage needs existing prerequisites. The PowerShell wrapper accepts the same arguments, for example `.\run.ps1 --start edges`.
 
 To use an existing FC output directory:
 
@@ -161,26 +161,19 @@ The source can be an output root or its `correlation` directory. Recording ident
 To run individual analyses or redraw saved results:
 
 ```powershell
-python run.py -c configs/Aseries.yaml --stage pairwise
-python run.py -c configs/Aseries.yaml --stage descriptive
-python run.py -c configs/Aseries.yaml --stage stability
-python run.py -c configs/Aseries.yaml --stage longitudinal
-python run.py -c configs/Aseries.yaml --stage combined
-python run.py -c configs/Aseries.yaml --stage report
-python run.py -c configs/Aseries.yaml --stage report --report-section combined
-python run.py -c configs/Aseries.yaml --stage report --report-section descriptive
-python run.py -c configs/Aseries.yaml --stage report --report-section stability
-python run.py -c configs/Aseries.yaml --stage report --report-section longitudinal
+python run.py -c configs/Aseries.yaml --stage pairwise --resume-batch "data/output/<batch>"
+python run.py -c configs/Aseries.yaml --stage descriptive --resume-batch "data/output/<batch>"
+python run.py --from "data/output/<batch>/<Aseries-directory>" --stage report --report-section longitudinal
 ```
 
 `--report-section` selects `pairwise`, `descriptive`, `stability`, `longitudinal`, `combined`, `statistics`, or `all`. Numerical outputs and figure generation are separate, so saved analyses can be redrawn without rerunning their calculations.
 
 ## Outputs
 
-Results are organized by configuration:
+Results are grouped by execution: `data/output/Batch_<UTC>_<dataset>_<task>/` contains `batch_summary.json`, batch-local `logs/`, and one or more series directories. An applicable A/N comparison adds `compare/` with numerical and report outputs grouped by function. See the [batch layout and examples](docs/batch_output.md). Each series retains its data tag and this structure:
 
 ```text
-data/output/<data_tag>/
+data/output/<batch>/<data_tag>/
 ├── correlation/             Labeled FC matrices
 ├── results/
 │   ├── edges/               FC edge arrays, labels, and recording masks
@@ -194,7 +187,7 @@ data/output/<data_tag>/
 └── metadata/                Configuration, source information, and recording/stage records
 ```
 
-The bundled configurations write logs to `data/output/_logs/`. Batch status summaries default to `_batches/` under the first configuration's output root. Generated data, reports, and logs are local outputs.
+Batch summaries and logs stay within the batch. Use `--output-root` to choose its parent directory. A dry run creates no batch files; `--compare` and saved-result redraw each publish a new batch without changing their inputs.
 
 ## Project structure
 

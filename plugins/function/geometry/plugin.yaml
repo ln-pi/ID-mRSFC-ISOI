@@ -1,0 +1,28 @@
+id: geometry                                                                                       #	High-dimensional FC geometry and inference.
+kind: function                                                                                     #	Optional analysis plugin.
+dependencies: [sklearn]                                                                            #	Libraries required when geometry is enabled.
+option_sections: [geometry, inference]                                                             #	Options consumed by numerical stages.
+stages:                                                                                            #	Numerical entries and their product contracts.
+  geometry:                                                                                        #	Compute or report saved high-dimensional geometry.
+    module: geometry                                                                               #	Implementation module relative to the plugin.
+    after: edges                                                                                   #	Insert this stage after the named stage.
+    requires: [edges]                                                                              #	Prerequisites for the stage or saved comparison.
+    validate: validate                                                                             #	Validate inputs before executing the stage.
+    produces:                                                                                      #	Name the indexed numerical products.
+      geometry_metrics: [basis.json, distances.csv, points.csv, dispersion.csv, displacement.csv]  #	Distance, point, dispersion and displacement tables.
+      discriminability: [subjects.csv]                                                             #	Directional subject matching scores.
+      crossval_difference: [crossval.csv]                                                          #	Cross-validated differences.
+  inference:                                                                                       #	Summarize animal-level geometry results.
+    module: inference                                                                              #	Implementation module relative to the plugin.
+    after: geometry                                                                                #	Insert this stage after the named stage.
+    requires: [geometry]                                                                           #	Prerequisites for the stage or saved comparison.
+    validate: validate                                                                             #	Validate inputs before executing the stage.
+    produces:                                                                                      #	Name the indexed numerical products.
+      inference_summary: ['*']                                                                     #	Saved animal-level summaries and sensitivity results.
+reports:                                                                                           #	Report entries provided by this plugin.
+  geometry:                                                                                        #	Compute or report saved high-dimensional geometry.
+    product: results/geometry/index.json                                                           #	Saved index needed to render the section.
+    render: figures:report_section                                                                 #	Python entry point for the report section.
+comparison:                                                                                        #	Run geometry comparison across two saved series.
+  requires: [results/geometry/index.json, results/inference/index.json]                            #	Prerequisites for the stage or saved comparison.
+  run: compare:compare                                                                             #	Python entry point for the comparison or batch.

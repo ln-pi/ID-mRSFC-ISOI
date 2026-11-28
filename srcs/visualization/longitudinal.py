@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from srcs.analysis.longitudinal import SCHEMA
+from srcs.core.artifacts import artifact_entries, artifact_path
 from srcs.workflow.products import verified_index
 from srcs.utils.provenance import sha256
 from srcs.utils.storage import save_json
@@ -111,5 +112,7 @@ def run(ctx):
             axes[2].legend(fontsize=8)
         fig.suptitle(f"{atlas} | linear-time mouse random intercept/slope + mouse-week effect | no causal interpretation")
         save(fig, f"random_slopes_{atlas}")
-    save_json(folder/"index.json", dict(schema=SCHEMA, files=written, source=str(source), source_sha256=sha256(source)))
-    return [str(source)]+[item["path"] for item in index["files"]+index["products"]]
+    save_json(folder/"index.json", dict(schema=SCHEMA, files=written,
+        source=artifact_path(source, folder), source_sha256=sha256(source)))
+    return [str(source.resolve()), *(str(item["path"]) for key in ("files", "products")
+                                     for item in artifact_entries(index[key], source.parent))]

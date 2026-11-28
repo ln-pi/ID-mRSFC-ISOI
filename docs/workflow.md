@@ -11,15 +11,16 @@ $python = "F:\CondaEnvs\ID-mRSFC-ISOI\python.exe"
 
 上面的 SeedFC 检查命令已在本机验证。源文件含 22 个 seed；当前 FourNetworks 分区通过 exclude 保留指定的 14 个 ROI，noGSR 两组存在有效记录，可运行后续分析。原生 FC 入口还需先在配置中设置实际可用的处理后信号和 mask 路径。
 
-数据来源、跨系列比较和重绘使用同一入口。
+数据来源、比较和重绘使用同一入口。
 
 ```powershell
 python run.py -c configs/SeedFC_Aseries_noGSR.yaml --stage seedfc --dry-run
-python run.py --compare <A系列输出目录> <N系列输出目录>
-python run.py --from <旧输出目录> --stage report
+python run.py --compare "<A系列输出目录>" "<N系列输出目录>"
+python run.py --compare "<同一系列的GSR输出目录>" "<同一系列的noGSR输出目录>"
+python run.py --from "<旧输出目录>" --stage report
 ```
 
-输入及插件配置见 [插件契约](plugin_contract.md)。重绘旧输出时，新报告保存在当前工作树默认输出根目录的 `_redraw/`。
+输入及插件配置见 [插件契约](plugin_contract.md)。重绘和显式比较都创建新批次，已有输入系列保持只读。配对比较按鼠 ID、周次和 Run 对齐，双方有效采集必须一致，不自动取交集。`--configs` 不会自动触发 GSR/noGSR 配对。示例见 [批次输出布局](batch_output.md)。
 
 工作根目录为 `F:/Projects/ID-mRSFC-ISOI/P3_HighDimension`。入口不依赖 VS Code debug 或手工设置 PYTHONPATH。
 
@@ -30,7 +31,7 @@ python run.py --dry-run
 .\run.ps1 --dry-run
 ```
 
-`run.ps1` 默认调用已激活环境的 python；也可通过 `ISOI_PYTHON` 指定解释器绝对路径。两种入口传递相同参数和退出码。相对配置及数据路径都以 P3 工作树为基准；参考 P2 的协调器按配置、阶段启动独立 worker。任意阶段失败返回非零码并停止后续工作；执行计划、阶段退出码和整体状态写入 首份配置输出根目录下的 `_batches/<UTC时间_标识>/batch_summary.json`，可用 `--report-root` 改位置。
+`run.ps1` 默认调用已激活环境的 python，也可通过 `ISOI_PYTHON` 指定解释器。两种入口传递相同参数和退出码。配置相对路径以 P3 工作树为基准；协调器按配置、阶段启动独立 worker。失败返回非零码，批次根的 `batch_summary.json` 保留执行状态。`--output-root` 指定批次的父目录，`--dry-run` 只打印计划和校验首阶段，不落盘。
 
 ## 阶段
 
@@ -47,26 +48,23 @@ python run.py --dry-run
 | statistics | 保存的 combined 数值 | 逐鼠自身匹配优势/百分位、重复测量统计与表 |
 | report | 保存的 pairwise、combined、statistics 数值 | 阶段图、ID/edge 图、统计图及输入校验索引 |
 
-默认 Aseries→Nseries，从 fc 连续执行。预处理含人工操作，必须显式指定。`--stage` 单阶段，`--start` 连续执行该阶段及后续阶段。只需要新基础数组时，可依次单独执行 edges、pairwise、descriptive、report，不必计算 combined。
+默认 Aseries→Nseries，从 `fc` 连续执行；启用 SeedFC 的配置默认从 `seedfc` 开始。预处理含人工操作，必须显式指定。`--stage` 单阶段，`--start` 连续执行该阶段及后续阶段。后续单阶段需要已有上游结果时，用 `--resume-batch` 明确指定原批次；只重画图时优先用 `--from`，不会修改原批次。
 
 ```powershell
 python run.py -c configs/Nseries.yaml --stage preprocess
 python run.py -c configs/Nseries.yaml --stage fc
-python run.py -c configs/Nseries.yaml --start edges
-python run.py -c configs/Nseries.yaml --stage combined
-python run.py -c configs/Nseries.yaml --stage report
-python run.py -c configs/Nseries.yaml --stage report --report-section combined
-python run.py -c configs/Nseries.yaml --stage report --report-section statistics
+python run.py -c configs/Nseries.yaml --start edges --resume-batch "data/output/<fc批次>"
+python run.py --from "data/output/<批次名>/<N系列目录>" --stage report --report-section combined
 ```
 
 `report` 默认绘制所有已有数值结果；`--report-section` 可选 `pairwise/descriptive/stability/longitudinal/combined/statistics/all`，已启用的功能插件还可注册报告分节。combined 和 statistics 阶段不再直接绘图，统计数值统一写入 `results/statistics/`，原 `report/tables/` 中初版遗留文件不作为新流程输入。独立重绘从保存的结果读取。阶段相似性展示窗口改变阶段成员时，还会读取经校验的 edge store。FC 阶段仍可生成采集诊断图，生成逻辑位于 visualization，不在 FC 计算核心中。
 
-幅度与拓扑分析：
+幅度与拓扑分析（这些阶段续用指定批次）：
 
 ```powershell
-python run.py --stage edges
-python run.py --stage descriptive
-python run.py --stage report --report-section descriptive
+python run.py --stage edges --resume-batch "data/output/<fc批次>"
+python run.py --stage descriptive --resume-batch "data/output/<fc批次>"
+python run.py --stage report --report-section descriptive --resume-batch "data/output/<fc批次>"
 ```
 
 默认对每个 Run 及所有 Run 的 Fisher-z FC 均值分别计算欧式/RMS/1−r 距离、LOO ΔFC、群体离散度、逐边样本方差及 ROI/网络方向和贡献。`results/descriptive/` 保存两套队列的全部数值、选择规则和描述性离群示例；`report/descriptive/` 保存 PNG/PDF 和索引。参数和公式见 [配置与数据契约](config.md)。
@@ -78,16 +76,16 @@ conda activate ID-mRSFC-ISOI
 python run.py --configs configs/SeedFC_Aseries_noGSR.yaml configs/SeedFC_Nseries_noGSR.yaml --start seedfc
 ```
 
-所有输入均启用 SeedFC 和 `plugins.function.seedfc_supplement.enabled` 时，完整报告批次在主流程和适用的 compare 完成后，按 atlas 生成补充报告。单系列完整批次也适用。 `--dry-run` 在 `batch_summary.json` 记录补充步骤和输入目录。单阶段和局部报告只执行指定工作。补充失败时，汇总记录失败原因和已生成的产物，可用如下入口从原先输出重试。
+所有输入均启用 SeedFC 和 `plugins.function.seedfc_supplement.enabled` 时，完整报告批次在主流程和适用的 compare 完成后，按 atlas 生成补充报告。单系列完整批次也适用。单阶段和局部报告只执行指定工作。补充失败时，批次摘要记录失败原因和已生成的产物，可用如下入口读取保存的输出、另起新批次。
 
 ```powershell
 python -m plugins.function.seedfc_supplement --outputs "<A输出目录>" "<N输出目录>" --atlas FourNetworks --config configs/SeedFC_Aseries_noGSR.yaml
-python -m plugins.function.seedfc_supplement --outputs "<A输出目录>" "<N输出目录>" --atlas FourNetworks --config configs/SeedFC_Aseries_noGSR.yaml --redraw
+python -m plugins.function.seedfc_supplement --outputs "<A输出目录>" "<N输出目录>" --atlas FourNetworks --config configs/SeedFC_Aseries_noGSR.yaml --redraw --numeric-source "<批次>/compare/results/seedfc_supplement/FourNetworks"
 python run.py --from "<已有输出目录>" --stage report --report-section longitudinal --visualization-config "<绘图配置.yaml>"
 python run.py --compare "<A输出目录>" "<N输出目录>" --visualization-config "<绘图配置.yaml>"
 ```
 
-补充分析的默认位置为输出根目录的 `_supplement/numeric/` 和 `_supplement/reports/`。手动补算可用 `--destination` 指定其他根目录。数值清单核验输入 edge store、数值选项及产品散列。修改颜色、DPI 或展示起点后，`--redraw` 要求命中这份已核验的数值缓存，并生成独立的报告。 `--from` 将主流程重绘图写入默认输出根目录的 `_redraw/`。主流程已有报告时，不同选项或输入的新图写入 `rendered_reports/`。跨系列 compare 按已保存输入及展示设置定位结果，直接读取两组共同具备的 pairwise、descriptive 和 longitudinal 产物。
+双系列补充数值和报告分别位于新批次的 `compare/results/seedfc_supplement/<atlas>/` 和 `compare/report/seedfc_supplement/<atlas>/`；单系列批次改放在系列根内。手动补算可用 `--destination` 指定新批次的父目录。数值清单核验 edge store、选项和产品散列；补充报告只重绘时须通过 `--numeric-source` 指定已有数值目录，源目录不改写。A/N compare 直接读取双方共有的 pairwise、descriptive 和 longitudinal 产物，输出按功能放在 `compare/results/` 和 `compare/report/`。
 
 ## 显式导入已有 FC
 
@@ -121,10 +119,10 @@ combined 从 F_z 平均后重新计算相关，保留有效 P1 14 周、7+7 拆�
 稳定性和纵向演化在 descriptive 后运行：
 
 ```powershell
-python run.py --stage stability
-python run.py --stage longitudinal
-python run.py --stage report --report-section stability
-python run.py --stage report --report-section longitudinal
+python run.py --stage stability --resume-batch "data/output/<批次名>"
+python run.py --stage longitudinal --resume-batch "data/output/<批次名>"
+python run.py --stage report --report-section stability --resume-batch "data/output/<批次名>"
+python run.py --stage report --report-section longitudinal --resume-batch "data/output/<批次名>"
 ```
 
 首次升级先重建 edges/descriptive。也可使用 `--start descriptive` 连续运行后续全部阶段；这包含原 combined/statistics，不是仅运行新增两个模块。新阶段的方差模型、固定队列限制和输出详见 [数据契约](config.md)。
@@ -148,4 +146,4 @@ available_phase 要求各端点阶段在对应 Run 的全部周均有效；fixed
 
 longitudinal 的 phase_subjects.csv 和 phase_dispersion.csv 汇总已算好的每周指标。阶段 LOO RMS 是每周 RMS 的均值，不先平均偏移向量。有符号偏离均值单独保存，允许方向抵消。每指标保留有效周数；阶段图是描述性均值，不平均逐周置信区间。
 
-先运行各系列计算和 report，再使用 python run.py --compare <A输出目录> <N输出目录>。比较输出的 report/series_overlays 保存统一坐标中的每周与四阶段 trajectories、方向热图和跨 Run 阶段矩阵。A/N 使用固定颜色，Run 使用固定点形，模式相关色条在 [-1,1] 的理论范围内由配置决定，方向 RMS 两侧共用非负色条。各组 LOO 模板分别计算。
+先运行各系列计算和 report，再使用 python run.py --compare <A输出目录> <N输出目录>。新批次的 `compare/report/core/` 保存统一坐标中的每周与四阶段 trajectories、方向热图和跨 Run 阶段矩阵。A/N 使用固定颜色，Run 使用固定点形，模式相关色条在 [-1,1] 的理论范围内由配置决定，方向 RMS 两侧共用非负色条。各组 LOO 模板分别计算。

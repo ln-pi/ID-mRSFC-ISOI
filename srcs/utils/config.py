@@ -96,6 +96,8 @@ class RunContext:
     def output_path(self):
         if getattr(self.args,"saved_output",None):
             return str(self.args.saved_output)
+        if getattr(self.args, "series_output", None):
+            return str(self.args.series_output)
         return os.path.join(self.output_root, self.analysis_tag)
 
     @property
@@ -242,8 +244,8 @@ def load_context(config_path=None, create_dirs=True, *, enabled_functions=()):
     from srcs.utils.visualization import settings, validate
     validate(settings(config))
     if any(not isinstance(config.get("paths", {}).get(key), str) or not config["paths"][key]
-           for key in ("raw", "processed", "output", "mask", "log")):
-        raise ValueError("paths requires nonempty raw/processed/output/mask/log strings")
+           for key in ("raw", "processed", "output", "mask")):
+        raise ValueError("paths requires nonempty raw/processed/output/mask strings")
     variables = config.get("variables", {})
     dataset = variables.get("dataset")
     if (not isinstance(dataset, str) or dataset in (".", "..") or "/" in dataset or "\\" in dataset):
@@ -254,7 +256,7 @@ def load_context(config_path=None, create_dirs=True, *, enabled_functions=()):
             or len({"_".join(a) for a in atlases}) != len(atlases)):
         raise ValueError("variables.Atlas requires unique nonempty exclusion lists")
 
-    logger = setup_logger(str((PROJECT_ROOT / config["paths"]["log"]).resolve()))
+    logger = setup_logger()
     ctx = RunContext(args=args, config=config, logger=logger)
     _ = ctx.mice, ctx.weeks, ctx.runs, ctx.split_axis, ctx.selection_mode
 

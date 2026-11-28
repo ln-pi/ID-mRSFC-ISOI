@@ -9,9 +9,10 @@ from srcs.analysis.topology import edge_layout
 from srcs.analysis.variance import balanced_reml, variance_intervals
 from srcs.workflow.products import bootstrap_options, descriptive_products, publish
 from srcs.utils.edge_store import load_store, store_path
-from srcs.utils.provenance import code_identity, sha256
+from srcs.utils.provenance import code_identity
 
 
+from srcs.core.artifacts import artifact_path, artifact_ref
 from srcs.core.runtime import numerical_stage
 
 OPTION_KEYS = ("stability", "descriptive", "pairwise",)
@@ -27,7 +28,7 @@ def run(ctx):
     for atlas in ["_".join(a) for a in ctx.atlases]:
         store = load_store(ctx, atlas)
         descriptive, source = descriptive_products(ctx, atlas)
-        sources.append(source)
+        sources.append(dict(source, path=artifact_path(source["path"], folder)))
         meta = descriptive["available_week"][0]
         weeks = meta["week_ids"]
         rows, audit = run_repeatability(store, weeks)
@@ -45,9 +46,9 @@ def run(ctx):
             path = folder/atlas/f"residual_{cohort}.npz"
             save_arrays(path, dict(schema=SCHEMA, atlas=atlas, cohort=cohort, mouse_ids=m["mouse_ids"],
                 week_ids=weeks, view_ids=m["view_ids"], axes="mouse,view,week_u,week_v",
-                same_record="diagonal_excluded", source=source, code=code),
+                same_record="diagonal_excluded", source=dict(source, path=artifact_path(source["path"], path.parent)), code=code),
                 residual_similarity=persistence, valid_record=arrays["valid_record"])
-            products.append(dict(kind="residual", atlas=atlas, cohort=cohort, path=str(path), sha256=sha256(path)))
+            products.append(artifact_ref(path, folder, kind="residual", atlas=atlas, cohort=cohort))
 
         wi = [store.weeks.index(w) for w in weeks]
         complete = store.valid_record[:, wi, :].all(axis=(1, 2))
@@ -100,9 +101,9 @@ def run(ctx):
             scale="FC_edge_Fisher_z", model="week_fixed + run_fixed + mouse_random + mouse_week_random",
             estimator="balanced_orthogonal_constrained_REML_ordered_variance_pooling",
             bootstrap=dict(unit="whole_mouse", count=count, seed=seed, interval="percentile_95"),
-            edge_store=dict(path=str(store_path(ctx, atlas)), sha256=sha256(store_path(ctx, atlas))), code=code),
+            edge_store=artifact_ref(store_path(ctx, atlas), path.parent), code=code),
             edge_index=store.edge_index, **fit)
-        products.append(dict(kind="variance", atlas=atlas, path=str(path), sha256=sha256(path)))
+        products.append(artifact_ref(path, folder, kind="variance", atlas=atlas))
         ctx.logger.info("Stability %s: ICC model %s, %s complete mice", atlas, model_status, len(ids))
     publish(folder, SCHEMA, products, tables, dict(schema=SCHEMA, code=code, sources=sources,
         formulas=dict(stable_icc="mouse_variance/(mouse_variance+mouse_week_variance+error_variance)",

@@ -8,7 +8,7 @@
 | --- | --- |
 | paths.raw / processed | 每次采集的原始/处理后数据根目录 |
 | paths.mask | ROI PNG 与 Chamber_Mask.png；默认 ../data/mask |
-| paths.output / log | 独立结果及日志位置 |
+| paths.output | 批次父目录；日志随批次保存，旧 `paths.log` 字段不再使用 |
 | variables.dataset | 路径附加目录 ID，可为空 |
 | variables.Mouse_ids / Week_ids / Run_ids | 显式、有序、唯一的采集维度标签 |
 | variables.Atlas | ROI 排除集合列表；每个分区独立 edge store |
