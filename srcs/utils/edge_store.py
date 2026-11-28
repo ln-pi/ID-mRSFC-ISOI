@@ -7,6 +7,7 @@ import pandas as pd
 from dataclasses import dataclass
 import numpy as np
 from srcs.analysis.connectome import EDGE_CLIP, SCHEMA
+from srcs.core.artifacts import artifact_path, artifact_ref, resolve_artifact
 from srcs.utils.storage import save_arrays, load_arrays
 from srcs.utils.fc_import import verify_import
 from srcs.utils.layout import fc_reports
@@ -147,13 +148,15 @@ def source_identity(ctx, atlas):
     expected = {(w, m, r, "_".join(a)) for w in ctx.weeks for m in ctx.mice for r in ctx.runs for a in ctx.atlases}
     if len(records) != len(rows) or set(records) != expected:
         raise ValueError("FC audit scope differs from configured axes")
+    anchor = store_path(ctx, atlas).parent
     sources = []
     for week in ctx.weeks:
         path = table_path(ctx, week, atlas)
-        sources.append(dict(week=week, path=str(path.resolve()), sha256=sha256(path) if path.exists() else None))
+        sources.append(dict(week=week, path=artifact_path(path, anchor),
+                            sha256=sha256(path) if path.exists() else None))
     provenance = Path(ctx.output_path) / "metadata/fc_import_provenance.json"
     return dict(config_tag=ctx.analysis_tag, sources=sources,
-                audit=dict(path=str(report.resolve()), sha256=sha256(report)),
+                audit=artifact_ref(report, anchor),
                 preprocessing_provenance=json.loads(provenance.read_text(encoding="utf-8")) if provenance.exists()
                 else {"origin": "current_fc_pipeline", "data_identity": ctx.data_identity}), records
 
@@ -166,7 +169,13 @@ def load_store(ctx, atlas):
         raise ValueError("Edge store bytes changed; rebuild --stage edges")
     store = EdgeStore.load(path)
     current, _ = source_identity(ctx, atlas)
-    if store.metadata["input_identity"] != current:
+    recorded = store.metadata["input_identity"]
+    # Normalize old absolute source references without altering persisted metadata.
+    def normalized(ref):
+        return dict(ref, path=artifact_path(resolve_artifact(ref["path"], path.parent), path.parent))
+    recorded = dict(recorded, sources=[normalized(ref) for ref in recorded["sources"]],
+                    audit=normalized(recorded["audit"]))
+    if recorded != current:
         raise ValueError("Edge store inputs changed; rebuild --stage edges")
     if store.metadata.get("numerical_code") != ctx.data_identity["stages"]["edges"]["code"]:
         raise ValueError("Edge store code changed; rebuild --stage edges")
@@ -179,7 +188,9 @@ def run(ctx):
     code = code_identity()
     for atlas in ["_".join(a) for a in ctx.atlases]:
         identity, audit = source_identity(ctx, atlas)
-        tables = {row["week"]: pd.read_pickle(row["path"]) if row["sha256"] else None for row in identity["sources"]}
+        anchor = store_path(ctx, atlas).parent
+        tables = {row["week"]: pd.read_pickle(resolve_artifact(row["path"], anchor)) if row["sha256"] else None
+                  for row in identity["sources"]}
         store = EdgeStore.from_tables(tables, ctx.mice, ctx.weeks, ctx.runs, atlas, audit)
         store.metadata.update(input_identity=identity, code=code,
                               numerical_code=ctx.data_identity["stages"]["edges"]["code"])

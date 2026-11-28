@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 
+from srcs.core.artifacts import artifact_entries, artifact_path
 from srcs.utils.storage import load_arrays
 from srcs.analysis.magnitude import SCHEMA
 from srcs.utils.provenance import sha256
@@ -11,9 +12,17 @@ from srcs.utils.storage import save_json, save_table
 def verified_index(path):
     path = Path(path)
     index = json.loads(path.read_text(encoding="utf-8"))
-    for item in index.get("products", []) + index.get("files", []):
-        if sha256(item["path"]) != item["sha256"]:
-            raise ValueError(f"Saved product changed: {item['path']}; rerun its numerical stage")
+    for key in ("products", "files", "phase_products"):
+        if key not in index:
+            continue
+        entries = index[key]
+        resolved = []
+        for item in artifact_entries(entries, path.parent):
+            if sha256(item["path"]) != item["sha256"]:
+                raise ValueError(f"Saved product changed: {item['path']}; rerun its numerical stage")
+            resolved.append(dict(item, path=str(item["path"])))
+        index[key] = ({item["path"]: item["sha256"] for item in resolved}
+                      if isinstance(entries, dict) else resolved)
     return index
 
 
@@ -56,4 +65,4 @@ def publish(folder, schema, products, tables, methods):
     save_json(folder/"methods.json", methods)
     files = [folder/f"{name}.csv" for name in tables]+[folder/"methods.json"]
     save_json(folder/"index.json", dict(schema=schema, products=products,
-        files=[dict(path=str(p), sha256=sha256(p)) for p in files]))
+        files=[dict(path=artifact_path(p, folder), sha256=sha256(p)) for p in files]))

@@ -5,16 +5,16 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
-from srcs.core.artifacts import sha256, write_json
+from srcs.core.artifacts import artifact_path, sha256, write_json
 from srcs.utils.visualization import displayed_weeks, filter_cohorts, settings
 from srcs.visualization.scales import resolve
 
 
-def render(folder, first, second, paired, *, viz=None, reference_week=None):
+def render(folder, first, second, paired, *, viz=None, reference_week=None, destination=None):
     viz = settings() if viz is None else viz
     colors = dict(zip(("first", "second"), viz["series_colors"]))
     markers = viz["view_markers"]
-    root=Path(folder).parents[1]/"report"
+    root = Path(destination) if destination is not None else Path(folder).parents[1] / "report"
     root.mkdir(parents=True,exist_ok=True)
     source=Path(folder)/"projection.csv"
     display=pd.read_csv(source)
@@ -99,7 +99,10 @@ def render(folder, first, second, paired, *, viz=None, reference_week=None):
             fig.savefig(path,dpi=viz["defaults"]["dpi"],bbox_inches="tight")
             plt.close(fig)
             paths.append(path)
-    write_json(root/"color_scales.json", scales)
-    inputs=[source,Path(folder)/"trajectories.csv",Path(folder)/"distances.csv"]
-    write_json(root/"manifest.json",dict(first=first,second=second,source={str(p):sha256(p) for p in inputs},
-               figures={str(p):sha256(p) for p in paths}))
+    scale_file = root / "color_scales.json"
+    write_json(scale_file, scales)
+    inputs = [source, Path(folder) / "trajectories.csv", Path(folder) / "distances.csv", Path(folder) / "identity.json"]
+    write_json(root / "manifest.json", dict(first=first, second=second,
+               source={artifact_path(p, root): sha256(p) for p in inputs},
+               figures={artifact_path(p, root): sha256(p) for p in paths},
+               color_scales={artifact_path(scale_file, root): sha256(scale_file)}))

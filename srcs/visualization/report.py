@@ -6,7 +6,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
-from srcs.core.artifacts import sha256, write_json
+from srcs.core.artifacts import artifact_ref, write_json
 
 
 def publish_report(ctx, figures, inputs, skipped):
@@ -15,7 +15,7 @@ def publish_report(ctx, figures, inputs, skipped):
     with PdfPages(folder/"report.pdf") as pdf:
         for path in figures:
             path = Path(path)
-            entries.append(dict(path=str(path),sha256=sha256(path)))
+            entries.append(artifact_ref(path, folder))
             encoded = base64.b64encode(path.read_bytes()).decode("ascii")
             title = html.escape(path.stem)
             body.append(f'<figure><img alt="{title}" src="data:image/png;base64,{encoded}"><figcaption>{title}</figcaption></figure>')

@@ -9,6 +9,7 @@ import pandas as pd
 from srcs.utils.storage import load_arrays
 from srcs.analysis.stability import SCHEMA
 from srcs.analysis.topology import edge_matrix
+from srcs.core.artifacts import artifact_entries, artifact_path
 from srcs.workflow.products import verified_index
 from srcs.utils.provenance import sha256
 from srcs.utils.storage import save_json
@@ -107,6 +108,8 @@ def run(ctx):
             fig.colorbar(im, ax=list(axes.flat), label="Conditional stable mouse effect (Fisher-z FC)", shrink=.7, extend=scale.extend)
             fig.suptitle(f"{atlas} | stable component BLUP, not pure neural identity")
             save(fig, f"stable_components_{atlas}")
-    save_json(folder/"index.json", dict(schema=SCHEMA, files=written, source=str(source), source_sha256=sha256(source)))
+    save_json(folder/"index.json", dict(schema=SCHEMA, files=written,
+        source=artifact_path(source, folder), source_sha256=sha256(source)))
     save_json(folder/"color_scales.json", scales)
-    return [str(source)]+[item["path"] for item in index["files"]+index["products"]]
+    return [str(source.resolve()), *(str(item["path"]) for key in ("files", "products")
+                                     for item in artifact_entries(index[key], source.parent))]

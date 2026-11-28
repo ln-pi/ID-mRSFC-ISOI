@@ -4,25 +4,26 @@ import json
 from itertools import product
 import matplotlib.pyplot as plt
 import numpy as np
-from srcs.core.artifacts import sha256
+from srcs.core.artifacts import resolve_artifact, sha256
 from srcs.utils.storage import load_arrays, save_json
 from srcs.utils.visualization import displayed_weeks, settings
 from srcs.visualization.scales import resolve
 
 
-def render(products, folder, dpi=None, *, viz=None, reference_week=None):
+def render(products, folder, dpi=None, *, viz=None, reference_week=None, anchor=None):
     viz = settings() if viz is None else viz
     dpi = viz["defaults"]["dpi"] if dpi is None else dpi
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     loaded = []
     for series, item in products:
-        if sha256(item["path"]) != item["sha256"]:
+        path = resolve_artifact(item["path"], anchor or Path.cwd())
+        if sha256(path) != item["sha256"]:
             raise ValueError("Changed stage-similarity product")
-        path = Path(item["path"])
         meta, arrays = load_arrays(path, "phase_similarity")
         if viz["time_start"] == "baseline":
-            selection = json.loads((path.parents[1] / "selection.json").read_text(encoding="utf-8"))
+            selection_path = path.parents[1] / "selection.json"
+            selection = json.loads(selection_path.read_text(encoding="utf-8"))
             weeks = sorted(selection["week_positions"], key=selection["week_positions"].__getitem__)
             allowed = set(displayed_weeks(weeks, viz, reference_week))
             phases = {case["phase_u"]: case["weeks_u"] for case in meta["cases"]}
@@ -34,13 +35,15 @@ def render(products, folder, dpi=None, *, viz=None, reference_week=None):
                 from srcs.analysis.phases import similarities
                 from srcs.utils.edge_store import EdgeStore
                 weekly = next(entry for entry in selection["products"] if entry["atlas"] == meta["atlas"])
-                if sha256(weekly["path"]) != weekly["sha256"]:
+                weekly_path = resolve_artifact(weekly["path"], selection_path.parent)
+                if sha256(weekly_path) != weekly["sha256"]:
                     raise ValueError("Changed weekly pairwise product for phase redraw")
-                with np.load(weekly["path"], allow_pickle=False) as archive:
+                with np.load(weekly_path, allow_pickle=False) as archive:
                     edge = json.loads(str(archive["metadata"]))["edge_store"]
-                if sha256(edge["path"]) != edge["sha256"]:
+                edge_path = resolve_artifact(edge["path"], weekly_path.parent)
+                if sha256(edge_path) != edge["sha256"]:
                     raise ValueError("Changed edge store for phase redraw")
-                store = EdgeStore.load(edge["path"])
+                store = EdgeStore.load(edge_path)
                 cases, values, counts = similarities(store, dict(phases=visible, summary_phases=list(visible)))
                 meta = {**meta, "cases": cases}
                 arrays = dict(S_r=values, n_pairs=counts)

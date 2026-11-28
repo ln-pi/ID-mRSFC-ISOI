@@ -1,5 +1,4 @@
 """Independently redraw saved pairwise numerical products on shared r scales."""
-import json
 from math import ceil
 from pathlib import Path
 
@@ -8,6 +7,8 @@ import numpy as np
 
 from srcs.utils.storage import load_arrays
 from srcs.analysis.connectome import SIM_SCHEMA
+from srcs.core.artifacts import artifact_path
+from srcs.workflow.products import verified_index
 from srcs.utils.provenance import sha256
 from srcs.utils.storage import save_json
 from srcs.utils.visualization import displayed_weeks
@@ -37,7 +38,7 @@ def range_audit(values, mask, low, high):
 
 def run(ctx):
     source = Path(ctx.output_dir("results","pairwise",create=False))/"selection.json"
-    selection = json.loads(source.read_text(encoding="utf-8"))
+    selection = verified_index(source)
     products = {(p["atlas"], p["run"]): p for p in selection["products"]}
     folder = Path(ctx.output_dir("report", "pairwise"))
     written = []
@@ -50,8 +51,6 @@ def run(ctx):
     populations = {}
     for (atlas, run_id), product in products.items():
         path = Path(product["path"])
-        if sha256(path) != product["sha256"]:
-            raise ValueError(f"Saved pairwise tensor changed: {path}; rerun pairwise")
         meta, arrays = load_arrays(path, SIM_SCHEMA)
         saved_weeks = meta["week_ids"]
         weeks = displayed_weeks(saved_weeks, viz, reference)
@@ -122,7 +121,7 @@ def run(ctx):
     phase_files = render([(ctx.variables.get("series", "series"), p) for p in selection.get("phase_products", [])],
                          folder, ctx.figure_dpi(), viz=viz, reference_week=reference)
     written.extend(Path(p).name for p in phase_files)
-    save_json(folder / "index.json", dict(files=written, source=str(source), source_sha256=sha256(source),
+    save_json(folder / "index.json", dict(files=written, source=artifact_path(source, folder), source_sha256=sha256(source),
         scale="pattern_Pearson_r_of_F_z", cmap=viz["colormaps"][viz["metrics"]["pairwise"]["color_mode"]],
         out_of_range="distinct under/over colors; values unchanged", data_ranges=ranges,
         nan="masked", same_record="excluded",

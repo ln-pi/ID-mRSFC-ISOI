@@ -6,10 +6,10 @@ import pandas as pd
 from srcs.analysis.inference import observations, repeated_measures, posthoc
 from srcs.workflow.subject_metrics import export_subject_metrics
 from srcs.utils.dataset import statistics_metadata
-from srcs.utils.provenance import sha256
 from srcs.utils.storage import save_json, save_table
 
 
+from srcs.core.artifacts import artifact_ref
 from srcs.core.runtime import numerical_stage
 
 OPTION_KEYS = ("statistics", "analysis",)
@@ -35,7 +35,7 @@ def run(ctx):
     for condition in stat.columns:
         save_table(tables / f"posthoc_{condition}.csv", posthoc(stat, condition, excluded), index=False)
     save_json(folder / "methods.json", dict(schema="combined_statistics", analysis=metadata,
-        input=dict(path=str(ctx.statistics_path), sha256=sha256(ctx.statistics_path)),
+        input=artifact_ref(ctx.statistics_path, folder),
         within=within, inference="existing_within_mouse_combined_only", posthoc_correction="FDR_BH",
         undefined_posthoc="record_NaN_without_poisoning_finite_p_value_correction"))
     ctx.logger.info("Statistics: %s atlases; %s conditions", len(stat.index), len(stat.columns))

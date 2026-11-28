@@ -14,7 +14,7 @@
 
 ## 启用与历史产物
 
-在原生 FC 或 SeedFC 配置中设置 `plugins.function.geometry.enabled: true`，也可通过 `--function geometry` 为当前命令启用。几何数值阶段在 edges 后执行，`inference` 使用已发布的几何结果。Geometry 比较发布到输出根目录的 `_geometry_compare`，常规合并展示发布到 `_compare`。
+在原生 FC 或 SeedFC 配置中设置 `plugins.function.geometry.enabled: true`，也可通过 `--function geometry` 为当前命令启用。几何数值阶段在 edges 后执行，`inference` 使用已发布的几何结果。A/N 合并展示与 Geometry 比较共享批次的 `compare/`：数值分别在 `results/core/` 和 `results/geometry/`，图分别在 `report/core/` 和 `report/geometry/`。
 
 本地单独安装功能包可在已激活的 Python 环境运行 `python -m pip install <P3工作树>/plugins/function/geometry`。功能包通过 `plugins.function.geometry` 提供清单和实现，依赖 scikit-learn。原始结果保存在原有目录中。
 

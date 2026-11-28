@@ -12,10 +12,11 @@ from srcs.analysis.pairwise import week_positions
 from srcs.analysis.topology import edge_layout
 from srcs.workflow.products import bootstrap_options, descriptive_products, publish
 from srcs.utils.edge_store import load_store
-from srcs.utils.provenance import code_identity, sha256
+from srcs.utils.provenance import code_identity
 from srcs.utils.storage import save_json
 
 
+from srcs.core.artifacts import artifact_path, artifact_ref
 from srcs.core.runtime import numerical_stage
 
 OPTION_KEYS = ("longitudinal", "descriptive", "pairwise",)
@@ -39,7 +40,7 @@ def run(ctx):
     for atlas in ["_".join(a) for a in ctx.atlases]:
         store = load_store(ctx, atlas)
         descriptive, source = descriptive_products(ctx, atlas)
-        sources.append(source)
+        sources.append(dict(source, path=artifact_path(source["path"], folder)))
         meta = descriptive["available_week"][0]
         weeks, views, values, valid, definitions = select_views(store, dict(ctx.section("descriptive"), weeks=meta["week_ids"]))
         time = np.array([positions[w] for w in weeks])
@@ -76,12 +77,12 @@ def run(ctx):
             path = folder/atlas/f"trajectories_{cohort}.npz"
             save_arrays(path, dict(schema=SCHEMA, atlas=atlas, cohort=cohort, mouse_ids=store.mice,
                 week_ids=weeks, view_ids=views, roi_labels=store.roi_labels, time_positions=time.tolist(),
-                run_views=definitions, source=source, code=code),
+                run_views=definitions, source=dict(source, path=artifact_path(source["path"], path.parent)), code=code),
                 dispersion=np.stack(observed, axis=1), dispersion_ci=np.stack(intervals, axis=2),
                 deviation_rms=scores, group_mean=arrays["group_mean"],
                 group_step_change=np.diff(arrays["group_mean"], axis=0),
                 valid_record=mask, edge_index=store.edge_index)
-            products.append(dict(atlas=atlas, cohort=cohort, path=str(path), sha256=sha256(path)))
+            products.append(artifact_ref(path, folder, atlas=atlas, cohort=cohort))
 
         groups, _, mapping = edge_layout(store.roi_labels, store.edge_index,
                                           ctx.section("descriptive").get("network_mapping"))
@@ -115,7 +116,7 @@ def run(ctx):
         ["atlas", "cohort", "view"], ["dispersion", "group_mean_fc", "n_mice"])
     model_path = folder/"models.json"
     save_json(model_path, tables["random_slopes"])
-    products.append(dict(kind="model_diagnostics", path=str(model_path), sha256=sha256(model_path)))
+    products.append(artifact_ref(model_path, folder, kind="model_diagnostics"))
     publish(folder, SCHEMA, products, tables, dict(schema=SCHEMA, code=code, sources=sources,
         time_positions=positions, time_units="configured_week_positions_not_assumed_actual_acquisition_dates",
         phase_summary=dict(phases=phases, averaging="arithmetic mean of weekly metrics; no phase FC averaging",

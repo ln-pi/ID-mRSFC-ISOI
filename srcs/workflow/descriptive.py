@@ -10,9 +10,10 @@ from srcs.analysis.magnitude import SCHEMA, magnitude, select_views
 from srcs.analysis.topology import edge_layout, regional_summaries
 from srcs.utils.storage import save_json, save_table
 from srcs.utils.edge_store import load_store, store_path
-from srcs.utils.provenance import code_identity, sha256
+from srcs.utils.provenance import code_identity
 
 
+from srcs.core.artifacts import artifact_ref
 from srcs.core.runtime import numerical_stage
 
 OPTION_KEYS = ("descriptive",)
@@ -31,7 +32,7 @@ def run(ctx):
         weeks, views, values, valid, definitions = select_views(store, cfg)
         groups, edges, mapping = edge_layout(store.roi_labels, store.edge_index, cfg.get("network_mapping"))
         save_table(folder / f"edges_{atlas}.csv", pd.DataFrame(edges), index=False)
-        inputs.append(dict(path=str(store_path(ctx, atlas)), sha256=sha256(store_path(ctx, atlas))))
+        inputs.append(artifact_ref(store_path(ctx, atlas), folder))
         tables["reliability"].extend(row for row in same_day_reliability(store) if row["week"] in weeks)
         all_weeks, _, all_values, all_valid, _ = select_views(store, dict(cfg, weeks=store.weeks))
         ri = all_weeks.index(reference) if reference in all_weeks else None
@@ -102,7 +103,8 @@ def run(ctx):
                 run_views=definitions, scale="FC_edge_Fisher_z", edge_order="numpy.triu_indices(k=1)",
                 reference_week=reference, reference_meaning="configured_own_reference_not_assumed_healthy",
                 group_reference="same_cohort_week_view_leave_one_mouse_out", edge_variance_ddof=1,
-                dispersion_denominator="N_mice", **mapping, edge_store=inputs[-1], code=code,
+                dispersion_denominator="N_mice", **mapping,
+                edge_store=artifact_ref(store_path(ctx, atlas), folder / atlas), code=code,
                 axes=dict(distances="week,view,mouse_i,mouse_j", residual="mouse,week,view,edge",
                           edge_variance="week,view,edge", valid_record="mouse,week,view"))
             path = folder / atlas / f"{cohort}.npz"
@@ -110,7 +112,7 @@ def run(ctx):
                 edge_variance=variance, group_mean=group_mean, valid_record=selected,
                 n_valid_mice=selected.sum(axis=0), edge_index=store.edge_index,
                 **{f"distance_{key}": array for key, array in distances.items()})
-            products.append(dict(atlas=atlas, cohort=cohort, path=str(path), sha256=sha256(path)))
+            products.append(artifact_ref(path, folder, atlas=atlas, cohort=cohort))
             selection.extend(audits)
     for name, rows in tables.items():
         empty_columns = dict(
@@ -140,5 +142,5 @@ def run(ctx):
         icc="not_fitted", variance_model="not_fitted", inputs=inputs, code=code))
     files = sorted(p for p in folder.glob("*.csv")) + [folder / "selection.json", folder / "methods.json"]
     save_json(folder / "index.json", dict(schema=SCHEMA, products=products,
-        files=[dict(path=str(p), sha256=sha256(p)) for p in files]))
+        files=[artifact_ref(p, folder) for p in files]))
     ctx.logger.info("Descriptive: %s atlas/cohort products", len(products))

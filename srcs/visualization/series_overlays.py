@@ -1,10 +1,10 @@
 """Shared-coordinate comparisons of saved series products."""
-import json
 from pathlib import Path
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from srcs.core.artifacts import sha256, write_json
+from srcs.core.artifacts import artifact_path, sha256, write_json
+from srcs.workflow.products import verified_index
 from srcs.visualization.phase_pairwise import render as render_phases
 from srcs.analysis.phases import weekly_metric_means
 from srcs.utils.visualization import displayed_weeks, filter_cohorts, settings
@@ -90,13 +90,22 @@ def render_trajectories(frames, colors, viz, save):
                 save(fig, f"{prefix}longitudinal_{atlas}_{cohort}_{mode}")
 
 
-def prepare_and_render(left, right, folder, first_label, second_label, *, viz=None, config=None, products=None):
+def prepare_and_render(left, right, folder, first_label, second_label, *, viz=None, config=None,
+                       products=None, report_destination=None, batch_root=None):
     config = config or {}
     viz = settings(config) if viz is None else viz
     reference = config.get("descriptive", {}).get("reference_week")
     folder = Path(folder)
-    destination = folder.parents[1]/"report"/"series_overlays"
+    destination = (Path(report_destination) if report_destination is not None
+                   else folder.parents[1] / "report/series_overlays")
     destination.mkdir(parents=True, exist_ok=True)
+
+    def source_ref(path):
+        resolved = path.resolve()
+        if batch_root is not None and not resolved.is_relative_to(batch_root):
+            return str(resolved)
+        return artifact_path(resolved, destination)
+
     sources, phase_products, frames, figures, tables = {}, [], {}, [], []
     for side, root, label in (("first", left, first_label), ("second", right, second_label)):
         for stage, filename in (("pairwise", "selection.json"), ("longitudinal", "index.json"), ("descriptive", "index.json")):
@@ -105,21 +114,18 @@ def prepare_and_render(left, right, folder, first_label, second_label, *, viz=No
             path = root/"results"/stage/filename
             if not path.is_file():
                 continue
-            index = json.loads(path.read_text(encoding="utf-8"))
-            sources[str(path)] = sha256(path)
+            index = verified_index(path)
+            sources[source_ref(path)] = sha256(path)
             if stage == "pairwise":
                 phase_products.extend((label, item) for item in index.get("phase_products", []))
                 continue
-            for item in index.get("files", []) + index.get("products", []):
-                if sha256(item["path"]) != item["sha256"]:
-                    raise ValueError(f"Changed saved product: {item['path']}")
             for name in (("dispersion", "subjects", "phase_dispersion", "phase_subjects") if stage == "longitudinal" else ("regional",)):
                 csv = path.parent/(name+".csv")
                 if csv.is_file():
                     data = pd.read_csv(csv)
                     if "atlas" in data and len(data):
                         frames.setdefault(stage+"_"+name, []).append(data.assign(series=label, side=side))
-                        sources[str(csv)] = sha256(csv)
+                        sources[source_ref(csv)] = sha256(csv)
     # A combined comparison requires saved phase products from both series.
     if len({label for label, _ in phase_products}) == 2:
         figures.extend(render_phases(phase_products, destination/"pairwise", viz=viz, reference_week=reference))
@@ -173,13 +179,14 @@ def prepare_and_render(left, right, folder, first_label, second_label, *, viz=No
         figures.extend(direction_files)
     else:
         direction_scales = {}
-    write_json(destination/"color_scales.json", scales + list(direction_scales.values()))
+    scale_file = destination / "color_scales.json"
+    write_json(scale_file, scales + list(direction_scales.values()))
     manifest = destination / "manifest.json"
     write_json(manifest, dict(inputs=sources, direction_color_scales=direction_scales,
-               figures={p: sha256(p) for p in figures},
+               figures={artifact_path(p, destination): sha256(p) for p in figures},
                labels={"first": first_label, "second": second_label},
                aggregation="LOO references remain within series; group color and Run marker shared"))
-    return [*tables, manifest]
+    return [*tables, manifest, scale_file]
 
 
 def direction_values(regional):

@@ -7,8 +7,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from srcs.core.artifacts import publish, sha256, write_json
+from srcs.core.artifacts import artifact_entries, publish, sha256, write_json
 from srcs.core.identity import code_closure, digest
+from srcs.core.staging import staging_directory
 from srcs.utils.config import PROJECT_ROOT
 from srcs.utils.storage import save_table
 from .discriminability import score
@@ -32,13 +33,16 @@ def load_products(root):
     for name in ("geometry", "inference"):
         path = root/"results"/name/"index.json"
         index = json.loads(path.read_text(encoding="utf-8"))
-        files = index["files"]
-        if isinstance(files,list):
-            files = {v["path"]:v["sha256"] for v in files+index.get("products",[])}
-        for item, expected in files.items():
-            if sha256(item) != expected:
-                raise ValueError(f"Changed product: {item}")
-        hashes[name] = sha256(path)
+        files = [*artifact_entries(index["files"], path.parent),
+                 *artifact_entries(index.get("products", []), path.parent)]
+        checksums = {}
+        for item in files:
+            product = item["path"]
+            if sha256(product) != item["sha256"]:
+                raise ValueError(f"Changed product: {product}")
+            role = product.relative_to(path.parent).as_posix() if product.is_relative_to(path.parent) else product.name
+            checksums[role] = item["sha256"]
+        hashes[name] = digest(checksums)
     folder=root/"results/geometry/"
     basis=json.loads((folder/"basis.json").read_text(encoding="utf-8"))
     points=pd.read_csv(folder/"points.csv").drop_duplicates(["atlas","cohort","week","run","mouse"])
@@ -51,7 +55,7 @@ def load_products(root):
     return identity, hashes, basis, points
 
 
-def compare(first, second, output_root=None, seed=None, repeats=None, *, configs):
+def compare(first, second, *, destination, configs, seed=None, repeats=None):
     from srcs.utils.visualization import settings
     from srcs.workflow.plugins import function_options
     display_config = configs[0]
@@ -78,9 +82,6 @@ def compare(first, second, output_root=None, seed=None, repeats=None, *, configs
                    set(map(tuple,x[keys].values))!=set(map(tuple,y[keys].values))):
         raise ValueError("Paired branches differ in mouse or valid acquisition membership")
     from srcs.core.runtime import exclusive_run
-    from tempfile import mkdtemp
-    from uuid import uuid4
-    from shutil import copy2
 
     numerical_code = [getsource(func) for func in (load_products, saved_positions, calculate_comparison)]
     numerical_code.append(code_closure(PROJECT_ROOT, f"{__package__}.discriminability"))
@@ -89,52 +90,52 @@ def compare(first, second, output_root=None, seed=None, repeats=None, *, configs
                    mice={"first": a["scope"]["mice"], "second": b["scope"]["mice"]},
                    code=digest(numerical_code),
                    positions=positions, seed=seed, repeats=repeats, candidate_limit=options.get("candidate_limit", 9))
-    base = (Path(output_root).resolve() if output_root else left.parent) / "_geometry_compare"
-    numeric_key = digest(payload)
-    numeric = base / "_numeric" / numeric_key
-    with exclusive_run(numeric.parent / f"{numeric_key}.lock"):
-        from srcs.workflow.products import verified_index
+    target = Path(destination).resolve()
+    numeric = target / "results/geometry"
+    with exclusive_run(target / "metadata/geometry.lock"):
+        save_batch_numeric(numeric, x, y, left, right, a, b, paired, positions, payload)
+        render_comparison(numeric, a, b, paired, viz, reference, report_destination=target / "report/geometry")
+    return numeric
+
+
+def save_batch_numeric(folder, x, y, left, right, a, b, paired, positions, payload):
+    """Publish one verified numerical result, independent of report settings."""
+    from srcs.workflow.products import verified_index
+
+    marker = folder / "identity.json"
+    try:
+        published_identity = json.loads(marker.read_text(encoding="utf-8"))
+        if digest(published_identity) == digest(payload):
+            verified_index(folder / "index.json")
+            return
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    folder.parent.mkdir(parents=True, exist_ok=True)
+    with staging_directory(folder.parent, "geometry") as staging:
+        staged = staging / "results"
+        products = calculate_comparison(staged, x, y, left, right, a, b, paired, positions,
+                                        payload["seed"], payload["repeats"], payload["candidate_limit"], payload)
+        publish(staged / "index.json", "geometry_comparison", "geometry_comparison",
+                [*products, staged / "identity.json"])
+        old = Path(staging) / "previous"
+        if folder.exists():
+            folder.rename(old)
         try:
-            record = verified_index(numeric / "index.json")
-        except (OSError, ValueError, KeyError):
-            record = None
-        if record is None:
-            pending = Path(mkdtemp(prefix=f".{numeric_key}.", dir=numeric.parent))
-            products = calculate_comparison(pending, x, y, left, right, a, b, paired, positions,
-                                            seed, repeats, options.get("candidate_limit", 9), payload)
-            # Publish the index using the paths after the atomic directory move.
-            write_json(pending / "index.json", dict(schema="comparison_numeric",
-                files=[dict(path=str(numeric / path.name), sha256=sha256(path))
-                       for path in [*products, pending / "identity.json"]]))
-            if numeric.exists():
-                numeric.rename(numeric.with_name(f".{numeric.name}.{uuid4().hex}.invalid"))
-            pending.rename(numeric)
-            record = verified_index(numeric / "index.json")
-    renderer = [sha256(Path(__file__).with_name("comparison_figures.py")),
-                sha256(PROJECT_ROOT / "srcs/visualization/scales.py")]
-    display_key = digest([numeric_key, viz, reference, display_config.get("pairwise", {}), renderer])
-    folder = base / f"{left.name}__vs__{right.name}_{display_key[:8]}" / "results/compare"
-    with exclusive_run(folder.parent / "compare.lock"):
-        folder.mkdir(parents=True, exist_ok=True)
-        paths = []
-        for item in record["files"]:
-            path = Path(item["path"])
-            target = folder / path.name
-            copy2(path, target)
-            if path.name != "identity.json":
-                paths.append(target)
-        render_comparison(folder, a, b, paired, paths, viz, reference)
-    return folder
+            staged.rename(folder)
+        except OSError:
+            if old.exists():
+                old.rename(folder)
+            raise
 
 
-def render_comparison(folder, a, b, paired, paths, viz, reference):
+def render_comparison(folder, a, b, paired, viz, reference, *, report_destination):
     first_label, second_label = a["scope"]["series"], b["scope"]["series"]
     if first_label == second_label:
         first_label += "/" + a["scope"]["branch"]
         second_label += "/" + b["scope"]["branch"]
-    publish(folder/"index.json", "geometry_comparison", "geometry_comparison", paths+[folder/"identity.json"])
     from .comparison_figures import render
-    render(folder,first_label,second_label,paired,viz=viz,reference_week=reference)
+    render(folder, first_label, second_label, paired, viz=viz, reference_week=reference,
+           destination=report_destination)
 
 
 def calculate_comparison(folder, x, y, left, right, a, b, paired, positions, seed, repeats, candidate_limit, payload):

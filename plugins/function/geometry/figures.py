@@ -1,24 +1,22 @@
 """Render saved geometry without refitting FC or changing cohort membership."""
-import json
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from srcs.core.artifacts import sha256, write_json
+from srcs.core.artifacts import artifact_entries, write_json
+from srcs.workflow.products import verified_index
 from srcs.utils.visualization import displayed_weeks, filter_cohorts
 from srcs.visualization.scales import resolve
 
 
-def render(ctx):
-    source = Path(ctx.output_path)/"results/geometry/"
-    index = json.loads((source/"index.json").read_text(encoding="utf-8"))
-    for path,expected in index["files"].items():
-        if sha256(path) != expected:
-            raise ValueError(f"Geometry product changed: {path}")
+def render(ctx, source=None, index=None):
+    source = Path(source or Path(ctx.output_path) / "results/geometry/index.json")
+    index = verified_index(source) if index is None else index
+    files = (item["path"] for item in artifact_entries(index["files"], source.parent))
     target = Path(ctx.output_dir("report","geometry_figures"))
-    tables = {p.stem: pd.read_csv(p) for p in map(Path,index["files"]) if p.suffix==".csv"}
+    tables = {p.stem: pd.read_csv(p) for p in files if p.suffix == ".csv"}
     viz = ctx.viz()
     weeks_to_plot = displayed_weeks(ctx.weeks, viz, ctx.section("descriptive").get("reference_week"))
     tables = {key: filter_cohorts(frame[frame.week.isin(weeks_to_plot)] if "week" in frame else frame, viz)
@@ -125,5 +123,6 @@ def render(ctx):
 
 
 def report_section(ctx, source):
-    index = json.loads(source.read_text(encoding="utf-8"))
-    return render(ctx), [str(source), *index["files"]]
+    index = verified_index(source)
+    inputs = [str(item["path"]) for item in artifact_entries(index["files"], source.parent)]
+    return render(ctx, source, index), [str(source.resolve()), *inputs]

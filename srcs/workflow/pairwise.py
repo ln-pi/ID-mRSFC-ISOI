@@ -5,11 +5,11 @@ from srcs.utils.storage import save_arrays
 from srcs.analysis.phases import similarities
 from srcs.analysis.connectome import pairwise_tensor
 from srcs.analysis.pairwise import selections, week_positions, analyze_views, METRICS, COLUMNS
-from srcs.utils.provenance import sha256
 from srcs.utils.storage import save_json, save_table
 from srcs.utils.edge_store import load_store, store_path
 
 
+from srcs.core.artifacts import artifact_ref
 from srcs.core.runtime import numerical_stage
 
 OPTION_KEYS = ("pairwise",)
@@ -18,6 +18,7 @@ OPTION_KEYS = ("pairwise",)
 @numerical_stage("pairwise", OPTION_KEYS)
 def run(ctx):
     views, positions = selections(ctx.weeks, ctx.section("pairwise")), week_positions(ctx.weeks, ctx.section("pairwise").get("week_positions"))
+    folder = Path(ctx.output_dir("results", "pairwise"))
     rows, audits, products = [], [], []
     phase_products = []
     for atlas in ["_".join(a) for a in ctx.atlases]:
@@ -30,19 +31,18 @@ def run(ctx):
                         averaging="mean_correlations is arithmetic mean of weekly Pearson r",
                         exclusions="identical acquisitions excluded; mean-FC same-record diagonal masked; mean-correlation cross-week self values retained"),
                         S_r=phase_r, n_pairs=support)
-            phase_products.append(dict(path=str(path), sha256=sha256(path), atlas=atlas))
+            phase_products.append(artifact_ref(path, folder, atlas=atlas))
         for run_id in store.runs:
             meta, arrays = pairwise_tensor(store, run_id)
-            meta.update(edge_store=dict(path=str(store_path(ctx, atlas)), sha256=sha256(store_path(ctx, atlas))),
+            path = folder / atlas / f"{run_id}.npz"
+            meta.update(edge_store=artifact_ref(store_path(ctx, atlas), path.parent),
                         code=store.metadata["code"])
-            path = Path(ctx.output_dir("results", "pairwise", atlas)) / f"{run_id}.npz"
             save_arrays(path, meta, **arrays)
             save_json(path.with_suffix(".json"), meta)
-            products.append(dict(path=str(path), sha256=sha256(path), atlas=atlas, run=run_id))
+            products.append(artifact_ref(path, folder, atlas=atlas, run=run_id))
             part, selection_audit = analyze_views(store, run_id, arrays, views, positions)
             rows.extend(part)
             audits.extend(selection_audit)
-    folder = Path(ctx.output_dir("results", "pairwise"))
     frame = pd.DataFrame(rows, columns=COLUMNS)
     save_table(folder / "subjects_by_pair.csv", frame, index=False)
     keys = ["atlas", "run", "view", "cohort", "mouse", "scale"]

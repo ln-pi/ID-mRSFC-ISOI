@@ -5,7 +5,7 @@ from pathlib import Path
 from importlib import import_module
 from tqdm import tqdm
 
-from srcs.core.artifacts import sha256, write_json, publish
+from srcs.core.artifacts import artifact_path, resolve_artifact, sha256, write_json, publish
 from srcs.core.contracts import StageResult, ProductRef, StageContext
 from dataclasses import asdict
 from srcs.core.identity import code_closure, digest
@@ -22,6 +22,17 @@ def record_path(ctx, stage):
 def record(ctx, stage):
     path = record_path(ctx, stage)
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+
+def _product_refs(state, anchor):
+    return tuple(ProductRef(**dict(item, path=resolve_artifact(item["path"], anchor)))
+                 for item in state.get("products", []))
+
+
+def _output_ref(ctx, path, anchor):
+    # Processed signals can be written outside the series by preprocessing.
+    path = Path(path).resolve()
+    return artifact_path(path, anchor) if path.is_relative_to(Path(ctx.output_path).resolve()) else str(path)
 
 
 def recording_inputs(ctx, raw=False):
@@ -75,7 +86,8 @@ def signature(ctx, stage):
         previous = record(ctx, parent)
         if not previous and parent == "fc" and (Path(ctx.output_path) / "metadata/fc_import_provenance.json").exists():
             continue
-        if not previous or not reusable(previous, signature(ctx, parent)["cache"]["key"]):
+        if not previous or not reusable(previous, signature(ctx, parent)["cache"]["key"],
+                                        record_path(ctx, parent).parent):
             raise ValueError(f"Inputs or products changed: rerun {parent}")
         inputs[parent] = digest(previous["cache"]["outputs"])
     option_keys = import_module(definition.module).OPTION_KEYS
@@ -112,25 +124,29 @@ def products(ctx, stage):
 def run_cached(ctx, stage, action):
     state = signature(ctx, stage)
     path = record_path(ctx, stage)
-    if reusable(record(ctx, stage), state["cache"]["key"]):
+    previous = record(ctx, stage)
+    if reusable(previous, state["cache"]["key"], path.parent):
         ctx.logger.info("Reusing verified products: %s", stage)
-        return StageResult(tuple(ProductRef(**item) for item in record(ctx,stage).get("products",[])))
+        return StageResult(_product_refs(previous, path.parent))
     state["status"] = "running"
     write_json(path, state)
     try:
         refs = {}
         for parent in state["inputs"]:
-            for item in record(ctx,parent).get("products",[]) if parent in ctx.workflow.stages else ():
-                refs[item["name"]]=ProductRef(**dict(item,path=Path(item["path"])))
+            if parent in ctx.workflow.stages:
+                for ref in _product_refs(record(ctx, parent), record_path(ctx, parent).parent):
+                    refs[ref.name] = ref
         ctx.stage = StageContext(refs,state["options"],state["option_keys"],
                                  Path(ctx.output_path),ctx.analysis_tag)
         try:
             action(ctx)
         finally:
             ctx.stage = None
-        state["cache"]["outputs"] = products(ctx, stage)
+        results = products(ctx, stage)
+        state["cache"]["outputs"] = {_output_ref(ctx, file, path.parent): checksum
+                                     for file, checksum in results.items()}
         refs = []
-        outputs = list(state["cache"]["outputs"])
+        outputs = list(results)
         for name, patterns in ctx.workflow.stages[stage].products.items():
             selected = [p for p in outputs if any(Path(p).match(glob) for glob in patterns)]
             if "@aggregate" in patterns:
@@ -138,10 +154,10 @@ def run_cached(ctx, stage, action):
             if not selected:
                 raise ValueError(f"No files for declared product {name}")
             index = path.parent/"products"/(name+".json")
-            ref = publish(index,name,name,selected)
-            state["cache"]["outputs"][str(index)] = ref.sha256
+            ref = publish(index, name, name, selected, artifact_root=ctx.output_path)
+            state["cache"]["outputs"][_output_ref(ctx, index, path.parent)] = ref.sha256
             refs.append(ref)
-        state["products"] = [dict(asdict(ref),path=str(ref.path)) for ref in refs]
+        state["products"] = [dict(asdict(ref), path=_output_ref(ctx, ref.path, path.parent)) for ref in refs]
         state["status"] = "complete"
     except BaseException as exc:
         state.update(status="failed", reason=str(exc))
